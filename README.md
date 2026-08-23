@@ -34,8 +34,6 @@ A retro-inspired web experience that recreates the warmth of Indian childhood me
 
 ## 🎬 Demo
 
-<video src="./demo.mp4" controls width="800"></video>
-
 https://github.com/PriyanshuChaudhary-hub/Aangan-99/blob/main/demo.mp4
 
 ## 🌐 Live Website
