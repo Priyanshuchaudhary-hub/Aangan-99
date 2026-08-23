@@ -19,8 +19,9 @@ A retro-inspired web experience that recreates the warmth of Indian childhood me
 ## 📸 Preview
 
 ### Nostalgia Radio
-
 ![Nostalgia Radio](./preview-radio.jpeg)
+### Memory Explorer
+![Memory](./memory.jpeg)
 
 > A retro CRT-style music player inspired by the golden era of Indian memories.
 
