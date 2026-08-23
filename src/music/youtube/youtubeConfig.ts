@@ -3,11 +3,23 @@
    Secure environment configuration & official API endpoints.
    ========================================================================= */
 
-const metaEnv = (import.meta as any).env || {};
+const getApiKey = (): string => {
+  try {
+    if (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.VITE_YOUTUBE_API_KEY) {
+      return (import.meta as any).env.VITE_YOUTUBE_API_KEY;
+    }
+    if (typeof process !== 'undefined' && process?.env?.YOUTUBE_API_KEY) {
+      return process.env.YOUTUBE_API_KEY;
+    }
+  } catch {
+    // Ignore runtime environment lookup errors in pure browser static environments
+  }
+  return '';
+};
 
 export const YOUTUBE_CONFIG = {
   // Never hardcode secrets. Read safely from environment or fallback
-  API_KEY: metaEnv.VITE_YOUTUBE_API_KEY || process.env.YOUTUBE_API_KEY || '',
+  API_KEY: getApiKey(),
   SEARCH_ENDPOINT: 'https://www.googleapis.com/youtube/v3/search',
   VIDEOS_ENDPOINT: 'https://www.googleapis.com/youtube/v3/videos',
   IFRAME_API_URL: 'https://www.youtube.com/iframe_api',
