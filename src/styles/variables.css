@@ -1,0 +1,58 @@
+/* =========================================================================
+   AANGAN '99 — CSS VARIABLES & DESIGN TOKENS
+   Production-ready technical tokens for Nostalgic 90s Indian Aesthetics
+   ========================================================================= */
+
+:root {
+  /* 90s Indian Nostalgia Palette */
+  --color-faded-cream: #f7f1e5;
+  --color-dusty-yellow: #d8a74e;
+  --color-mustard: #eab308;
+  --color-muted-red: #8c2d2d;
+  --color-sindoor: #992222;
+  --color-dark-brown: #221711;
+  --color-faded-green: #3e5442;
+  --color-washed-blue: #31475e;
+  --color-warm-orange: #b85b28;
+  --color-off-white: #faf6ee;
+  --color-charcoal: #1c1917;
+  --color-ticket-buff: #f0e6d2;
+  --color-slate-shadow: #120f0e;
+  
+  /* Retro Windows 98 OS Tokens */
+  --win-teal: #008080;
+  --win-navy: #000080;
+  --win-gray: #c0c0c0;
+  --win-light: #ffffff;
+  --win-dark: #808080;
+  --win-black: #000000;
+  --win-yellow: #ffff00;
+  
+  /* Indian Veranda & Materials */
+  --color-oxide-terrace: #4a2119;
+  --color-chai-stain: rgba(130, 75, 40, 0.28);
+  --color-roohafza: #c026d3;
+  --color-amras: #f59e0b;
+
+  /* Typography Scale */
+  --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Lora', Georgia, serif;
+  --font-handwriting: 'Kalam', 'Caveat', cursive;
+  --font-typewriter: 'Special Elite', 'Courier Prime', monospace;
+  --font-pixel: 'VT323', monospace;
+  --font-dotmatrix: 'Courier Prime', monospace;
+  --font-poster: 'Cinzel', 'Lora', serif;
+
+  /* Spacing Rhythms */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-tactile: 80ms ease-out;
+}

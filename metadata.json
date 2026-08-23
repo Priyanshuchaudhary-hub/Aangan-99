@@ -1,0 +1,6 @@
+{
+  "name": "Aangan 99 — Indian Childhood Nostalgia Machine",
+  "description": "An interactive digital nostalgia artifact recreating 90s & 2000s Indian childhood memories, featuring a playable cassette player, retro CRT TV tuner, vintage trunk items, monsoon paper boats, WWF trump cards, and ambient soundscapes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

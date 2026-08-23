@@ -1,0 +1,133 @@
+/* =========================================================================
+   AANGAN '99 — HIGH-PERFORMANCE CSS ANIMATIONS & ACCESSIBILITY
+   GPU-accelerated transformations, subtle analog micro-interactions,
+   and strict prefers-reduced-motion fallback support.
+   ========================================================================= */
+
+/* Cassette Spool Rotation */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinSlowReverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 4s linear infinite;
+  will-change: transform;
+}
+
+.animate-spin-reverse-slow {
+  animation: spinSlowReverse 4s linear infinite;
+  will-change: transform;
+}
+
+/* Analog Pulse / Glow */
+@keyframes analogGlow {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.6)); }
+}
+
+.animate-analog-glow {
+  animation: analogGlow 2.5s ease-in-out infinite;
+}
+
+/* CRT Subtle Flicker */
+@keyframes crtFlicker {
+  0% { opacity: 0.98; }
+  50% { opacity: 1; }
+  52% { opacity: 0.96; }
+  54% { opacity: 1; }
+  100% { opacity: 0.98; }
+}
+
+.animate-crt-flicker {
+  animation: crtFlicker 0.15s infinite;
+}
+
+/* Ceiling Fan Drift */
+@keyframes ceilingFan {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-ceiling-fan {
+  animation: ceilingFan 0.6s linear infinite;
+  transform-origin: center center;
+}
+
+/* Monsoon Ripple Wave */
+@keyframes waterRipple {
+  0% { transform: scale(0.8); opacity: 0.9; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+.animate-water-ripple {
+  animation: waterRipple 2s cubic-bezier(0.1, 0.2, 0.7, 1) infinite;
+}
+
+/* Tactile Button Press */
+.tactile-btn {
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.tactile-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: none !important;
+}
+
+/* Windows 98 3D Bevels */
+.win98-bevel-out {
+  border-top: 2px solid #ffffff;
+  border-left: 2px solid #ffffff;
+  border-right: 2px solid #000000;
+  border-bottom: 2px solid #000000;
+  box-shadow: inset 1px 1px 0px #dfdfdf, inset -1px -1px 0px #808080;
+}
+
+.win98-bevel-in {
+  border-top: 2px solid #808080;
+  border-left: 2px solid #808080;
+  border-right: 2px solid #ffffff;
+  border-bottom: 2px solid #ffffff;
+  box-shadow: inset 1px 1px 0px #000000, inset -1px -1px 0px #dfdfdf;
+}
+
+/* Accessible Focus Outlines */
+.accessible-focus:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   ACCESSIBILITY: PREFERS-REDUCED-MOTION
+   Disables disorienting flickers, rapid rotations, and heavy shakes.
+   ========================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin-slow,
+  .animate-spin-reverse-slow,
+  .animate-ceiling-fan,
+  .animate-crt-flicker,
+  .animate-analog-glow,
+  .animate-water-ripple {
+    animation: none !important;
+    transform: none !important;
+  }
+
+  .crt-overlay::before {
+    opacity: 0.2 !important;
+    background-size: 100% 4px !important;
+  }
+}
