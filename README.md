@@ -26,7 +26,7 @@ A retro-inspired web experience that recreates the warmth of Indian childhood me
 
 ### 🎬 Live Experience
 
-> Add your uploaded demo video here as `demo.mp4` and GitHub will show it directly.
+> Add your uploaded demo video here as demo.mp4 and GitHub will show it directly.
 
 ---
 
