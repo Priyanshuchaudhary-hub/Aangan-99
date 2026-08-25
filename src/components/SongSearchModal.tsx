@@ -29,7 +29,9 @@ import {
   Check,
   AlertTriangle,
   FolderPlus,
-  Compass
+  Compass,
+  LayoutList,
+  Grid
 } from 'lucide-react';
 import { useMusic } from '../context/MusicContext.tsx';
 import { audioSynthesizer } from '../utils/audioSynthesizer.ts';
@@ -115,6 +117,7 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
   const [isNostalgiaMode, setIsNostalgiaMode] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<'search' | 'discover' | 'my-mixes'>('search');
 
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [searchState, setSearchState] = useState<SearchState>('IDLE');
   const [results, setResults] = useState<YouTubeSearchResultTrack[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -608,159 +611,204 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
                 </div>
               )}
 
-              {/* RESULTS GRID */}
+              {/* RESULTS AREA */}
               {results.length > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {results.map((track) => {
-                    const isCurrent = currentTrack.youtubeId === track.videoId;
-                    const isFav = favoriteTrackIds.includes(`yt-${track.videoId}`);
-
-                    // Format duration as MM:SS cleanly
-                    const formattedDuration = (() => {
-                      if (track.duration && /^\d+:\d+$/.test(track.duration.trim())) {
-                        const parts = track.duration.trim().split(':');
-                        if (parts.length === 2) {
-                          return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
-                        }
-                        return track.duration.trim();
-                      }
-                      if (track.durationSeconds && track.durationSeconds > 0) {
-                        const m = Math.floor(track.durationSeconds / 60);
-                        const s = Math.floor(track.durationSeconds % 60);
-                        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                      }
-                      return track.duration || '--:--';
-                    })();
-
-                    return (
-                      <div
-                        key={track.videoId}
-                        className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between group ${
-                          isCurrent
-                            ? 'bg-[#2e1d12] border-[#f59e0b] shadow-[0_0_20px_rgba(245,158,11,0.2)]'
-                            : 'bg-[#180f0a] hover:bg-[#26170e] border-[#362316] hover:border-[#f59e0b]'
+                <div className="space-y-3">
+                  {/* Results Header with View Mode Toggle */}
+                  <div className="flex items-center justify-between pb-2 border-b border-[#312015] font-mono text-xs text-[#8c7460]">
+                    <div className="flex items-center gap-2">
+                      <span className="font-pixel text-[10px] uppercase text-[#f59e0b] flex items-center gap-1">
+                        <Sparkles className="w-3.5 h-3.5" /> ARCHIVE RESULTS ({results.length})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-[#120a06] p-1 rounded-xl border border-[#382315]">
+                      <button
+                        onClick={() => setViewMode('list')}
+                        className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all min-h-[36px] touch-manipulation cursor-pointer ${
+                          viewMode === 'list'
+                            ? 'bg-[#3d2518] text-[#fcd34d] font-bold border border-[#523826] shadow-sm'
+                            : 'text-[#8c7460] hover:text-[#d6c4b2]'
                         }`}
+                        title="Touch-friendly List View"
                       >
-                        {/* Top: Thumbnail & Info */}
-                        <div className="flex items-start gap-3">
-                          <div className="relative w-20 h-14 rounded-lg overflow-hidden border border-[#503624] flex-shrink-0 bg-black shadow-inner">
-                            <img
-                              src={track.thumbnail}
-                              alt={track.title}
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                            />
-                            <div className="absolute top-1 left-1 bg-black/80 text-[8px] font-pixel text-red-400 px-1 py-0.2 rounded border border-red-900/50 flex items-center gap-0.5">
-                              <Youtube className="w-2.5 h-2.5" />
-                              <span>YOUTUBE</span>
-                            </div>
-                            <div className="absolute bottom-1 right-1 bg-black/85 text-[9px] font-mono text-[#fcd34d] px-1 py-0.5 rounded border border-yellow-800/60 flex items-center gap-0.5">
-                              <Clock className="w-2.5 h-2.5 text-amber-400" />
-                              <span>{formattedDuration}</span>
-                            </div>
-                            {isCurrent && (
-                              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                <Disc className="w-5 h-5 text-[#fcd34d] animate-spin" />
-                              </div>
-                            )}
-                          </div>
+                        <LayoutList className="w-3.5 h-3.5" />
+                        <span className="text-[11px] uppercase font-mono">List</span>
+                      </button>
+                      <button
+                        onClick={() => setViewMode('grid')}
+                        className={`px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-all min-h-[36px] touch-manipulation cursor-pointer ${
+                          viewMode === 'grid'
+                            ? 'bg-[#3d2518] text-[#fcd34d] font-bold border border-[#523826] shadow-sm'
+                            : 'text-[#8c7460] hover:text-[#d6c4b2]'
+                        }`}
+                        title="Grid View"
+                      >
+                        <Grid className="w-3.5 h-3.5" />
+                        <span className="text-[11px] uppercase font-mono hidden sm:inline">Grid</span>
+                      </button>
+                    </div>
+                  </div>
 
-                          <div className="min-w-0 flex-1 space-y-1">
-                            {/* Title & Duration alongside */}
-                            <div className="flex items-start justify-between gap-1.5">
-                              <h4
-                                className="font-bold text-xs text-[#fef3c7] truncate group-hover:text-amber-300 transition-colors flex-1"
-                                dangerouslySetInnerHTML={{ __html: track.title }}
+                  {/* Results Container */}
+                  <div className={viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 gap-3' : 'space-y-3'}>
+                    {results.map((track) => {
+                      const isCurrent = currentTrack.youtubeId === track.videoId;
+                      const isFav = favoriteTrackIds.includes(`yt-${track.videoId}`);
+
+                      // Format duration as MM:SS cleanly
+                      const formattedDuration = (() => {
+                        if (track.duration && /^\d+:\d+$/.test(track.duration.trim())) {
+                          const parts = track.duration.trim().split(':');
+                          if (parts.length === 2) {
+                            return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+                          }
+                          return track.duration.trim();
+                        }
+                        if (track.durationSeconds && track.durationSeconds > 0) {
+                          const m = Math.floor(track.durationSeconds / 60);
+                          const s = Math.floor(track.durationSeconds % 60);
+                          return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                        }
+                        return track.duration || '--:--';
+                      })();
+
+                      return (
+                        <div
+                          key={track.videoId}
+                          className={`p-3.5 sm:p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 group ${
+                            isCurrent
+                              ? 'bg-[#2e1d12] border-[#f59e0b] shadow-[0_0_20px_rgba(245,158,11,0.2)]'
+                              : 'bg-[#180f0a] hover:bg-[#26170e] border-[#362316] hover:border-[#f59e0b]'
+                          }`}
+                        >
+                          {/* Top: Thumbnail & Info */}
+                          <div className="flex items-start gap-3">
+                            {/* Clickable Thumbnail */}
+                            <div
+                              onClick={() => handlePlayResult(track)}
+                              className="relative w-24 h-16 sm:w-28 sm:h-18 rounded-lg overflow-hidden border border-[#503624] flex-shrink-0 bg-black shadow-inner cursor-pointer group/thumb touch-manipulation"
+                              title="Play song"
+                            >
+                              <img
+                                src={track.thumbnail}
+                                alt={track.title}
+                                className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform"
                               />
-                              <span className="font-mono text-[10px] bg-[#3a2517] text-[#fcd34d] px-1.5 py-0.5 rounded border border-[#523826] flex items-center gap-1 flex-shrink-0 shadow-sm" title="Video Duration (MM:SS)">
+                              <div className="absolute top-1 left-1 bg-black/85 text-[8px] font-pixel text-red-400 px-1 py-0.5 rounded border border-red-900/50 flex items-center gap-0.5">
+                                <Youtube className="w-2.5 h-2.5" />
+                                <span className="hidden sm:inline">YOUTUBE</span>
+                              </div>
+                              <div className="absolute bottom-1 right-1 bg-black/90 text-[9px] font-mono text-[#fcd34d] px-1.5 py-0.5 rounded border border-yellow-800/60 flex items-center gap-0.5 font-bold">
                                 <Clock className="w-2.5 h-2.5 text-amber-400" />
-                                <span className="font-bold">{formattedDuration}</span>
-                              </span>
+                                <span>{formattedDuration}</span>
+                              </div>
+                              <div className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity ${isCurrent ? 'opacity-100' : 'opacity-0 group-hover/thumb:opacity-100'}`}>
+                                {isCurrent ? (
+                                  <Disc className="w-7 h-7 text-[#fcd34d] animate-spin" />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-full bg-[#f59e0b] text-black flex items-center justify-center shadow-lg">
+                                    <Play className="w-4 h-4 fill-current translate-x-0.5" />
+                                  </div>
+                                )}
+                              </div>
                             </div>
 
-                            {/* Artist & Year */}
-                            <div className="flex items-center gap-1.5 text-[11px] text-[#a8937d]">
-                              <p className="truncate font-sans font-medium text-[#d4c3b3]">
-                                {track.artist || track.channelTitle}
-                              </p>
-                              {track.year && (
-                                <span className="font-pixel text-[9px] bg-[#3a2517] text-[#fcd34d] px-1 rounded uppercase flex-shrink-0">
-                                  {track.year}
-                                </span>
+                            {/* Info */}
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <div className="flex items-start justify-between gap-1.5">
+                                <h4
+                                  onClick={() => handlePlayResult(track)}
+                                  className="font-bold text-sm text-[#fef3c7] leading-tight cursor-pointer hover:text-amber-300 transition-colors line-clamp-2"
+                                  dangerouslySetInnerHTML={{ __html: track.title }}
+                                />
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-1.5 text-xs text-[#a8937d]">
+                                <p className="font-sans font-medium text-[#d4c3b3] truncate max-w-[220px]">
+                                  {track.artist || track.channelTitle}
+                                </p>
+                                {track.year && (
+                                  <span className="font-pixel text-[9px] bg-[#3a2517] text-[#fcd34d] px-1.5 py-0.5 rounded uppercase flex-shrink-0 border border-[#523826]">
+                                    {track.year}
+                                  </span>
+                                )}
+                              </div>
+
+                              {track.channelTitle && track.channelTitle !== track.artist && (
+                                <div className="text-[10px] text-[#8c7460] font-mono truncate">
+                                  <span>Channel: </span>
+                                  <span className="text-[#e2d5c8] font-medium">{track.channelTitle}</span>
+                                </div>
                               )}
                             </div>
-
-                            {/* Channel Name alongside */}
-                            {track.channelTitle && (
-                              <div className="flex items-center gap-1 text-[10px] text-[#8c7460] font-mono truncate">
-                                <span>Channel:</span>
-                                <span className="text-[#e2d5c8] font-medium truncate">{track.channelTitle}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Bottom: Action Controls */}
-                        <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-[#29180e] gap-1 text-xs">
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => {
-                                toggleFavoriteTrack(`yt-${track.videoId}`);
-                              }}
-                              className="p-1.5 text-[#8a725f] hover:text-rose-400 transition-colors rounded hover:bg-[#2d1b11]"
-                              title="Favorite"
-                            >
-                              <Heart className={`w-3.5 h-3.5 ${isFav ? 'text-rose-500 fill-current' : ''}`} />
-                            </button>
-
-                            <button
-                              onClick={() => handleAddToQueue(track)}
-                              className="p-1.5 text-[#8a725f] hover:text-amber-300 transition-colors rounded hover:bg-[#2d1b11] flex items-center gap-1 font-mono text-[10px]"
-                              title="Add to current playback queue"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">QUEUE</span>
-                            </button>
-
-                            <button
-                              onClick={() => setSelectedTrackForMix(track)}
-                              className="p-1.5 text-[#8a725f] hover:text-emerald-300 transition-colors rounded hover:bg-[#2d1b11] flex items-center gap-1 font-mono text-[10px]"
-                              title="Save to My Mixes"
-                            >
-                              <FolderPlus className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">+ MIX</span>
-                            </button>
-
-                            <button
-                              onClick={() => setSelectedTrackForMemory(track)}
-                              className="p-1.5 text-[#8a725f] hover:text-amber-300 transition-colors rounded hover:bg-[#2d1b11] flex items-center gap-1 font-mono text-[10px]"
-                              title="Assign to memory (e.g. Summer Vacation, Rainy Window)"
-                            >
-                              <Bookmark className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">MEMORY</span>
-                            </button>
-
-                            <a
-                              href={track.externalUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="p-1.5 text-[#735e4e] hover:text-red-400 transition-colors rounded hover:bg-[#2d1b11]"
-                              title="Open on YouTube"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
                           </div>
 
-                          <button
-                            onClick={() => handlePlayResult(track)}
-                            className="px-3 py-1.5 bg-gradient-to-r from-[#854d0e] via-[#a16207] to-[#854d0e] hover:from-[#a16207] hover:to-[#ca8a04] text-[#fef08a] rounded-lg shadow font-pixel text-xs uppercase flex items-center gap-1 active:scale-95 transition-transform"
-                          >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>PLAY</span>
-                          </button>
+                          {/* Action Bar: Larger Touch Targets (Min 44px Height) */}
+                          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 pt-2.5 border-t border-[#29180e]">
+                            {/* Primary Touch Buttons: PLAY & QUEUE */}
+                            <div className="flex items-center gap-2 w-full sm:w-auto flex-1">
+                              <button
+                                onClick={() => handlePlayResult(track)}
+                                className="min-h-[44px] px-4 py-2.5 bg-gradient-to-r from-[#854d0e] via-[#a16207] to-[#854d0e] hover:from-[#a16207] hover:to-[#ca8a04] active:scale-95 text-[#fef08a] border border-[#d97706]/50 rounded-xl shadow-md font-pixel text-xs tracking-wider uppercase flex items-center justify-center gap-2 flex-1 sm:flex-initial touch-manipulation cursor-pointer font-bold"
+                                title="Play song immediately"
+                              >
+                                <Play className="w-4 h-4 fill-current" />
+                                <span>PLAY</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleAddToQueue(track)}
+                                className="min-h-[44px] min-w-[44px] px-3.5 py-2.5 bg-[#2d1b11] hover:bg-[#3d2518] text-[#fcd34d] border border-[#503624] hover:border-[#f59e0b] rounded-xl font-mono text-xs font-semibold flex items-center justify-center gap-1.5 flex-1 sm:flex-initial active:scale-95 transition-all touch-manipulation cursor-pointer shadow-sm"
+                                title="Add song to queue"
+                              >
+                                <Plus className="w-4 h-4 text-amber-400" />
+                                <span className="font-pixel text-[11px] uppercase">QUEUE</span>
+                              </button>
+                            </div>
+
+                            {/* Secondary Action Icons: Minimum 44px Touch Boundaries */}
+                            <div className="flex items-center gap-1 justify-end w-full sm:w-auto pt-1 sm:pt-0 border-t sm:border-t-0 border-[#23140b]">
+                              <button
+                                onClick={() => toggleFavoriteTrack(`yt-${track.videoId}`)}
+                                className="min-h-[44px] min-w-[44px] p-2.5 text-[#8a725f] hover:text-rose-400 transition-colors rounded-xl hover:bg-[#2d1b11] border border-[#332014] hover:border-[#503624] flex items-center justify-center active:scale-95 touch-manipulation"
+                                title="Favorite"
+                              >
+                                <Heart className={`w-4 h-4 ${isFav ? 'text-rose-500 fill-current' : ''}`} />
+                              </button>
+
+                              <button
+                                onClick={() => setSelectedTrackForMix(track)}
+                                className="min-h-[44px] px-2.5 py-2.5 text-[#8a725f] hover:text-emerald-300 transition-colors rounded-xl hover:bg-[#2d1b11] border border-[#332014] hover:border-[#503624] flex items-center justify-center gap-1 font-mono text-[11px] active:scale-95 touch-manipulation"
+                                title="Save to My Mixes"
+                              >
+                                <FolderPlus className="w-4 h-4 text-emerald-400" />
+                                <span className="hidden sm:inline font-pixel text-[10px]">+ MIX</span>
+                              </button>
+
+                              <button
+                                onClick={() => setSelectedTrackForMemory(track)}
+                                className="min-h-[44px] px-2.5 py-2.5 text-[#8a725f] hover:text-amber-300 transition-colors rounded-xl hover:bg-[#2d1b11] border border-[#332014] hover:border-[#503624] flex items-center justify-center gap-1 font-mono text-[11px] active:scale-95 touch-manipulation"
+                                title="Assign memory"
+                              >
+                                <Bookmark className="w-4 h-4 text-amber-400" />
+                                <span className="hidden sm:inline font-pixel text-[10px]">MEMORY</span>
+                              </button>
+
+                              <a
+                                href={track.externalUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="min-h-[44px] min-w-[44px] p-2.5 text-[#735e4e] hover:text-red-400 transition-colors rounded-xl hover:bg-[#2d1b11] border border-[#332014] hover:border-[#503624] flex items-center justify-center active:scale-95 touch-manipulation"
+                                title="Open on YouTube"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -813,20 +861,21 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 pl-1">
+                        <div className="flex items-center gap-1.5 pl-1">
                           <button
                             onClick={() => handleAddToQueue(tr)}
-                            className="p-1 text-[#8c7460] hover:text-amber-300"
+                            className="min-h-[40px] min-w-[40px] p-2 text-[#8c7460] hover:text-amber-300 rounded-lg hover:bg-[#2d1b11] border border-transparent hover:border-[#503624] flex items-center justify-center touch-manipulation"
                             title="Add to queue"
                           >
-                            <Plus className="w-3.5 h-3.5" />
+                            <Plus className="w-4 h-4 text-amber-400" />
                           </button>
                           <button
                             onClick={() => handlePlayResult(tr)}
-                            className="p-1.5 bg-[#854d0e] hover:bg-[#a16207] text-[#fef08a] rounded shadow font-pixel text-xs"
+                            className="min-h-[40px] px-3 bg-[#854d0e] hover:bg-[#a16207] text-[#fef08a] rounded-lg shadow font-pixel text-xs flex items-center justify-center gap-1 touch-manipulation cursor-pointer"
                             title="Play"
                           >
-                            <Play className="w-3 h-3 fill-current" />
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span className="hidden xs:inline">PLAY</span>
                           </button>
                         </div>
                       </div>

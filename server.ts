@@ -342,49 +342,42 @@ interface ServerSearchCacheEntry {
 const serverSearchCache = new Map<string, ServerSearchCacheEntry>();
 const SERVER_CACHE_TTL_MS = 15 * 60 * 1000;
 
-// Web Scraper Fallback using ytInitialData from YouTube Search Page
-async function scrapeYouTubeWebSearch(query: string, maxResults: number = 20): Promise<any[]> {
+// Web Scraper & Internal API Engine for YouTube Search
+async function fetchYouTubeInnerAPI(query: string, maxResults: number = 20): Promise<any[]> {
   try {
-    const searchQuery = query.toLowerCase().includes('song') || query.toLowerCase().includes('music')
-      ? query
-      : `${query} song`;
-    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
-
-    const response = await fetch(url, {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
         'Accept-Language': 'en-US,en;q=0.9',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-      }
+        'X-YouTube-Client-Name': '1',
+        'X-YouTube-Client-Version': '2.20240201.00.00'
+      },
+      body: JSON.stringify({
+        context: {
+          client: {
+            clientName: 'WEB',
+            clientVersion: '2.20240201.00.00',
+            hl: 'en',
+            gl: 'IN'
+          }
+        },
+        query: query
+      })
     });
 
-    if (!response.ok) {
-      console.warn('[YOUTUBE WEB SCRAPER] Search page HTTP error:', response.status);
+    if (!res.ok) {
+      console.warn('[YOUTUBE INNER API] Status:', res.status);
       return [];
     }
 
-    const html = await response.text();
-    const match =
-      html.match(/var ytInitialData = ({.*?});<\/script>/) ||
-      html.match(/window\["ytInitialData"\] = ({.*?});/);
-
-    if (!match || !match[1]) {
-      console.warn('[YOUTUBE WEB SCRAPER] Could not extract ytInitialData');
-      return [];
-    }
-
-    let data: any;
-    try {
-      data = JSON.parse(match[1]);
-    } catch {
-      console.warn('[YOUTUBE WEB SCRAPER] JSON parse error on ytInitialData');
-      return [];
-    }
-
+    const data = await res.json();
     const contents =
       data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer
-        ?.contents;
+        ?.contents || data?.contents?.sectionListRenderer?.contents;
+
     if (!Array.isArray(contents)) return [];
 
     const results: any[] = [];
@@ -419,17 +412,19 @@ async function scrapeYouTubeWebSearch(query: string, maxResults: number = 20): P
         }
 
         const thumbnail =
-          video.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+          video.thumbnail?.thumbnails?.[video.thumbnail.thumbnails.length - 1]?.url ||
+          `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-        if (durationSeconds < 40 || /#shorts/i.test(title)) continue;
+        if (durationSeconds < 35 || /#shorts/i.test(title)) continue;
 
         let score = 50;
         const lowerTitle = title.toLowerCase();
         const lowerChannel = channelTitle.toLowerCase();
         const lowerQuery = query.toLowerCase();
 
-        if (lowerTitle.includes(lowerQuery)) score += 30;
-        if (/official|vevo|t-series|sony|saregama|yrf|zee|tips|venus/i.test(lowerChannel)) score += 25;
+        if (lowerTitle.includes(lowerQuery)) score += 35;
+        if (/official|vevo|t-series|tseries|sony|saregama|yrf|zee|tips|venus/i.test(lowerChannel))
+          score += 25;
         if (/official video|full song|audio/i.test(lowerTitle)) score += 15;
 
         results.push({
@@ -457,41 +452,186 @@ async function scrapeYouTubeWebSearch(query: string, maxResults: number = 20): P
     results.sort((a, b) => b.score - a.score);
     return results;
   } catch (err) {
+    console.warn('[YOUTUBE INNER API] Exception:', err);
+    return [];
+  }
+}
+
+// Web Scraper Fallback using ytInitialData from YouTube Search Page
+async function scrapeYouTubeWebSearch(query: string, maxResults: number = 20): Promise<any[]> {
+  try {
+    const searchQuery = query.toLowerCase().includes('song') || query.toLowerCase().includes('music')
+      ? query
+      : `${query} song`;
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        Cookie: 'CONSENT=YES+cb.20210328-17-p0.en+FX+667; SOCS=CAESEwgDEgk0ODE3Nzc3MjAaAmVuIAEaBgiA_LyaBg'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn('[YOUTUBE WEB SCRAPER] Search page HTTP error:', response.status);
+      return [];
+    }
+
+    const html = await response.text();
+    let data: any = null;
+
+    const match =
+      html.match(/var ytInitialData = ({.*?});<\/script>/) ||
+      html.match(/window\["ytInitialData"\] = ({.*?});/) ||
+      html.match(/ytInitialData = ({.*?});/);
+
+    if (match && match[1]) {
+      try {
+        data = JSON.parse(match[1]);
+      } catch {
+        // Fallback to regex
+      }
+    }
+
+    if (data) {
+      const contents =
+        data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer
+          ?.contents || data?.contents?.sectionListRenderer?.contents;
+
+      if (Array.isArray(contents)) {
+        const results: any[] = [];
+        for (const section of contents) {
+          const items = section?.itemSectionRenderer?.contents;
+          if (!Array.isArray(items)) continue;
+
+          for (const item of items) {
+            const video = item?.videoRenderer;
+            if (!video || !video.videoId) continue;
+
+            const videoId = video.videoId;
+            if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) continue;
+
+            const title = video.title?.runs?.[0]?.text || video.title?.simpleText || 'Unknown Track';
+            const channelTitle =
+              video.ownerText?.runs?.[0]?.text ||
+              video.longBylineText?.runs?.[0]?.text ||
+              'YouTube Music';
+            const durationStr =
+              video.lengthText?.simpleText || video.lengthText?.runs?.[0]?.text || '03:45';
+
+            let durationSeconds = 225;
+            if (durationStr && durationStr.includes(':')) {
+              const parts = durationStr.split(':').map((p: string) => parseInt(p, 10));
+              if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                durationSeconds = parts[0] * 60 + parts[1];
+              }
+            }
+
+            const thumbnail =
+              video.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+            if (durationSeconds < 35 || /#shorts/i.test(title)) continue;
+
+            results.push({
+              id: `yt-${videoId}`,
+              title,
+              channelTitle,
+              artist: channelTitle,
+              thumbnailUrl: thumbnail,
+              thumbnail,
+              videoId,
+              externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+              provider: 'youtube',
+              embeddable: true,
+              duration: durationStr,
+              durationSeconds,
+              year: 2024,
+              score: 50
+            });
+
+            if (results.length >= maxResults) break;
+          }
+          if (results.length >= maxResults) break;
+        }
+
+        if (results.length > 0) return results;
+      }
+    }
+
+    // HTML Regex Extraction Fallback
+    const videoMatches = [...html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)];
+    const seenIds = new Set<string>();
+    const results: any[] = [];
+
+    for (const m of videoMatches) {
+      const videoId = m[1];
+      if (!videoId || seenIds.has(videoId)) continue;
+      seenIds.add(videoId);
+
+      results.push({
+        id: `yt-${videoId}`,
+        title: `${query} (Track)`,
+        channelTitle: 'YouTube Music',
+        artist: 'YouTube Music',
+        thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        videoId,
+        externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        provider: 'youtube',
+        embeddable: true,
+        duration: '03:45',
+        durationSeconds: 225,
+        year: 2024,
+        score: 40
+      });
+
+      if (results.length >= maxResults) break;
+    }
+
+    return results;
+  } catch (err) {
     console.warn('[YOUTUBE WEB SCRAPER] Exception:', err);
     return [];
   }
 }
 
-// Public Piped Search API Fallback
-async function fetchPipedSearchFallback(query: string, maxResults: number = 20): Promise<any[]> {
+// Public Invidious & Piped Search API Fallback
+async function fetchInvidiousOrPipedFallback(query: string, maxResults: number = 20): Promise<any[]> {
   const endpoints = [
+    'https://inv.tux.pizza/api/v1/search',
+    'https://invidious.nerdvpn.de/api/v1/search',
     'https://pipedapi.kavin.rocks/search',
-    'https://api.piped.video/search',
-    'https://pipedapi.drgns.space/search'
+    'https://api.piped.video/search'
   ];
 
   for (const ep of endpoints) {
     try {
-      const url = `${ep}?q=${encodeURIComponent(query)}&filter=music_songs`;
+      const isPiped = ep.includes('piped');
+      const url = isPiped
+        ? `${ep}?q=${encodeURIComponent(query)}&filter=music_songs`
+        : `${ep}?q=${encodeURIComponent(query)}&type=video`;
+
       const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
       if (!res.ok) continue;
 
       const data = await res.json();
-      const items = data.items || data;
+      const items = Array.isArray(data) ? data : data.items || [];
       if (!Array.isArray(items) || items.length === 0) continue;
 
       const results: any[] = [];
       for (const item of items) {
-        if (item.type !== 'video' && item.url) continue;
-        let videoId = item.id;
+        let videoId = item.videoId || item.id;
         if (item.url && item.url.includes('v=')) {
           videoId = item.url.split('v=')[1]?.split('&')[0];
         }
         if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) continue;
 
         const title = item.title || 'Unknown Track';
-        const channelTitle = item.uploaderName || 'YouTube Music';
-        const durationSec = item.duration || 225;
+        const channelTitle = item.author || item.uploaderName || 'YouTube Music';
+        const durationSec = item.lengthSeconds || item.duration || 225;
         const mins = Math.floor(durationSec / 60);
         const secs = durationSec % 60;
         const durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
@@ -501,8 +641,8 @@ async function fetchPipedSearchFallback(query: string, maxResults: number = 20):
           title,
           channelTitle,
           artist: channelTitle,
-          thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-          thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
           videoId,
           externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
           provider: 'youtube',
@@ -525,7 +665,54 @@ async function fetchPipedSearchFallback(query: string, maxResults: number = 20):
   return [];
 }
 
-// Shared YouTube Search Handler
+// iTunes Search API Fallback
+async function fetchITunesSearchFallback(query: string, maxResults: number = 15): Promise<any[]> {
+  try {
+    const url = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=${maxResults}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(3500) });
+    if (!res.ok) return [];
+
+    const data = await res.json();
+    if (!data.results || !Array.isArray(data.results) || data.results.length === 0) return [];
+
+    const results: any[] = [];
+    for (const item of data.results) {
+      const trackName = item.trackName || 'Unknown Track';
+      const artistName = item.artistName || 'Various Artists';
+      const durationMs = item.trackTimeMillis || 225000;
+      const durationSec = Math.floor(durationMs / 1000);
+      const mins = Math.floor(durationSec / 60);
+      const secs = durationSec % 60;
+      const durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      const year = item.releaseDate ? new Date(item.releaseDate).getFullYear() : 2024;
+      const artwork = (item.artworkUrl100 || item.artworkUrl60 || '').replace('100x100bb', '600x600bb');
+
+      results.push({
+        id: `itunes-${item.trackId}`,
+        title: `${trackName} - ${artistName}`,
+        artist: artistName,
+        channelTitle: `${artistName} - Topic`,
+        thumbnailUrl: artwork,
+        thumbnail: artwork,
+        videoId: '',
+        externalUrl: item.trackViewUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(`${artistName} ${trackName}`)}`,
+        provider: 'youtube',
+        embeddable: true,
+        duration: durationStr,
+        durationSeconds: durationSec,
+        year,
+        score: 35
+      });
+    }
+
+    return results;
+  } catch (err) {
+    console.warn('[ITUNES SEARCH FALLBACK] Error:', err);
+    return [];
+  }
+}
+
+// Shared YouTube Search Handler with Multi-Tier Resolution
 async function handleYouTubeSearch(
   query: string,
   maxResultsParam: number = 20
@@ -652,22 +839,6 @@ async function handleYouTubeSearch(
                 if (/official audio|full song|audio/i.test(lowerTitle)) score += 25;
                 if (/lyric video|lyrics/i.test(lowerTitle)) score += 15;
 
-                if (
-                  /cover|reaction|slowed|reverb|8d|remix|mashup|status|shorts|10 min|1 hour|loop|pitch|nightcore|karaoke|instrumental/i.test(
-                    lowerTitle
-                  ) &&
-                  !lowerQuery.includes('cover') &&
-                  !lowerQuery.includes('remix')
-                ) {
-                  score -= 50;
-                }
-
-                if (details.durationSeconds >= 90 && details.durationSeconds <= 480) {
-                  score += 15;
-                } else if (details.durationSeconds > 900 || details.durationSeconds < 60) {
-                  score -= 35;
-                }
-
                 return {
                   id: `yt-${videoId}`,
                   title,
@@ -703,51 +874,61 @@ async function handleYouTubeSearch(
             }
           }
         }
-      } else {
-        console.warn(`[YOUTUBE SEARCH] Official API status ${searchRes.status}. Engaging web scraper.`);
       }
     } catch (apiErr) {
-      console.warn('[YOUTUBE SEARCH] Official API exception. Engaging web scraper:', apiErr);
+      console.warn('[YOUTUBE SEARCH] Official API exception. Engaging fallback tiers:', apiErr);
     }
-  } else {
-    console.log('[YOUTUBE SEARCH] YOUTUBE_API_KEY not configured. Using resilient Web Search Scraper.');
   }
 
-  // Tier 2: Web Search Scraper (Extracts live search results from YouTube HTML)
+  // Tier 2: Internal YouTube Inner API (/youtubei/v1/search - no key required)
+  const innerResults = await fetchYouTubeInnerAPI(cleanQuery, limit);
+  if (innerResults && innerResults.length > 0) {
+    serverSearchCache.set(cacheKey, {
+      timestamp: Date.now(),
+      results: innerResults
+    });
+    return {
+      status: 200,
+      data: { success: true, results: innerResults, primaryVideo: innerResults[0], source: 'inner_api' }
+    };
+  }
+
+  // Tier 3: Web Search Scraper
   const webResults = await scrapeYouTubeWebSearch(cleanQuery, limit);
   if (webResults && webResults.length > 0) {
     serverSearchCache.set(cacheKey, {
       timestamp: Date.now(),
       results: webResults
     });
-
     return {
       status: 200,
-      data: {
-        success: true,
-        results: webResults,
-        primaryVideo: webResults[0],
-        source: 'web_scraper'
-      }
+      data: { success: true, results: webResults, primaryVideo: webResults[0], source: 'web_scraper' }
     };
   }
 
-  // Tier 3: Public Piped Search API Fallback
-  const pipedResults = await fetchPipedSearchFallback(cleanQuery, limit);
+  // Tier 4: Invidious / Piped API Fallback
+  const pipedResults = await fetchInvidiousOrPipedFallback(cleanQuery, limit);
   if (pipedResults && pipedResults.length > 0) {
     serverSearchCache.set(cacheKey, {
       timestamp: Date.now(),
       results: pipedResults
     });
-
     return {
       status: 200,
-      data: {
-        success: true,
-        results: pipedResults,
-        primaryVideo: pipedResults[0],
-        source: 'piped_api'
-      }
+      data: { success: true, results: pipedResults, primaryVideo: pipedResults[0], source: 'piped_api' }
+    };
+  }
+
+  // Tier 5: iTunes Search Fallback
+  const iTunesResults = await fetchITunesSearchFallback(cleanQuery, limit);
+  if (iTunesResults && iTunesResults.length > 0) {
+    serverSearchCache.set(cacheKey, {
+      timestamp: Date.now(),
+      results: iTunesResults
+    });
+    return {
+      status: 200,
+      data: { success: true, results: iTunesResults, primaryVideo: iTunesResults[0], source: 'itunes_api' }
     };
   }
 
