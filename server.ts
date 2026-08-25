@@ -178,26 +178,25 @@ function parseISO8601Duration(durationStr: string): number {
   return hours * 3600 + minutes * 60 + seconds;
 }
 
-// YouTube Data API v3 Resolution Endpoint (verifies status.embeddable === true via videos.list)
-app.get('/api/youtube/resolve', async (req, res) => {
-  try {
-    const title = (req.query.title as string) || '';
-    const artist = (req.query.artist as string) || '';
-    const rawQuery = (req.query.q as string) || `${title} ${artist} official`;
-    const apiKey = process.env.YOUTUBE_API_KEY;
+export async function handleYouTubeResolve(rawQuery: string, titleStr: string = '', artistStr: string = '') {
+  const apiKey = process.env.YOUTUBE_API_KEY || process.env.VITE_YOUTUBE_API_KEY;
 
-    if (!apiKey) {
-      console.warn('[YOUTUBE SERVER] YOUTUBE_API_KEY is missing on server.');
-      return res.status(400).json({
+  if (!apiKey) {
+    console.warn('[YOUTUBE SERVER] YOUTUBE_API_KEY is missing on server.');
+    return {
+      status: 400,
+      data: {
         success: false,
         error: 'YOUTUBE_API_KEY is not configured on the server.'
-      });
-    }
+      }
+    };
+  }
 
-    // Step 1: Search YouTube for candidates
+  try {
+    const query = (rawQuery || `${titleStr} ${artistStr} official`).trim();
     const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search');
     searchUrl.searchParams.set('key', apiKey);
-    searchUrl.searchParams.set('q', rawQuery.trim());
+    searchUrl.searchParams.set('q', query);
     searchUrl.searchParams.set('part', 'snippet');
     searchUrl.searchParams.set('type', 'video');
     searchUrl.searchParams.set('videoEmbeddable', 'true');
@@ -208,27 +207,25 @@ app.get('/api/youtube/resolve', async (req, res) => {
 
     const searchResponse = await fetch(searchUrl.toString());
     if (!searchResponse.ok) {
-      console.error('[YOUTUBE SERVER] Search status:', searchResponse.status);
-      return res.status(searchResponse.status).json({
-        success: false,
-        error: `YouTube search API returned status ${searchResponse.status}`
-      });
+      return {
+        status: searchResponse.status,
+        data: { success: false, error: `YouTube search API returned status ${searchResponse.status}` }
+      };
     }
 
     const searchData = await searchResponse.json();
     if (!searchData.items || !Array.isArray(searchData.items) || searchData.items.length === 0) {
-      return res.json({ success: false, error: 'No YouTube search results found.' });
+      return { status: 200, data: { success: false, error: 'No YouTube search results found.' } };
     }
 
     const candidateIds = searchData.items
       .map((item: any) => item.id?.videoId)
-      .filter((id: string | undefined) => Boolean(id));
+      .filter((id: string | undefined): id is string => Boolean(id) && typeof id === 'string' && id.trim().length > 0);
 
     if (candidateIds.length === 0) {
-      return res.json({ success: false, error: 'No video IDs found in search results.' });
+      return { status: 200, data: { success: false, error: 'No video IDs found in search results.' } };
     }
 
-    // Step 2: Fetch video details including status (embeddable check) and contentDetails
     const videosUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
     videosUrl.searchParams.set('key', apiKey);
     videosUrl.searchParams.set('part', 'snippet,status,contentDetails');
@@ -236,19 +233,17 @@ app.get('/api/youtube/resolve', async (req, res) => {
 
     const videosResponse = await fetch(videosUrl.toString());
     if (!videosResponse.ok) {
-      console.error('[YOUTUBE SERVER] Videos list status:', videosResponse.status);
-      return res.status(videosResponse.status).json({
-        success: false,
-        error: `YouTube videos.list API returned status ${videosResponse.status}`
-      });
+      return {
+        status: videosResponse.status,
+        data: { success: false, error: `YouTube videos.list API returned status ${videosResponse.status}` }
+      };
     }
 
     const videosData = await videosResponse.json();
     if (!videosData.items || !Array.isArray(videosData.items)) {
-      return res.json({ success: false, error: 'Failed to retrieve video details from YouTube.' });
+      return { status: 200, data: { success: false, error: 'Failed to retrieve video details from YouTube.' } };
     }
 
-    // Step 3: Filter & Rank candidates with status.embeddable === true
     const embeddableCandidates = videosData.items.filter((item: any) => {
       const isEmbeddable = item.status?.embeddable === true;
       const isPublic = item.status?.privacyStatus === 'public';
@@ -256,12 +251,14 @@ app.get('/api/youtube/resolve', async (req, res) => {
     });
 
     if (embeddableCandidates.length === 0) {
-      console.warn('[YOUTUBE SERVER] All candidates failed embeddable check!');
-      return res.json({
-        success: false,
-        error: 'No embeddable YouTube videos found for this search.',
-        allCandidatesEmbeddableFalse: true
-      });
+      return {
+        status: 200,
+        data: {
+          success: false,
+          error: 'No embeddable YouTube videos found for this search.',
+          allCandidatesEmbeddableFalse: true
+        }
+      };
     }
 
     const scored = embeddableCandidates.map((item: any) => {
@@ -273,9 +270,6 @@ app.get('/api/youtube/resolve', async (req, res) => {
       const durationSeconds = parseISO8601Duration(contentDetails.duration);
 
       let score = 0;
-      const combinedText = `${itemTitle} ${channelTitle}`.toLowerCase();
-
-      // Official label score boost
       if (/official|vevo|t-series|tseries|arijit|sony music|saregama|yrf|zee music|tips|venus|topic/i.test(channelTitle)) {
         score += 50;
       }
@@ -283,12 +277,10 @@ app.get('/api/youtube/resolve', async (req, res) => {
       if (/official audio|full song/i.test(itemTitle)) score += 25;
       if (/lyric video/i.test(itemTitle)) score += 15;
 
-      // Penalties for low quality / cover / reaction / pitch shifted
       if (/cover|remix|reaction|slowed|reverb|8d|status|shorts|10 min|loop|pitch|karaoke/i.test(itemTitle)) {
         score -= 40;
       }
 
-      // Duration check: standard song length 120s - 450s
       if (durationSeconds >= 120 && durationSeconds <= 450) {
         score += 10;
       } else if (durationSeconds > 900 || durationSeconds < 60) {
@@ -315,17 +307,33 @@ app.get('/api/youtube/resolve', async (req, res) => {
       };
     });
 
-    // Sort by score descending
     scored.sort((a: any, b: any) => b.score - a.score);
 
-    const bestMatch = scored[0];
-    const alternatives = scored.slice(1);
+    return {
+      status: 200,
+      data: {
+        success: true,
+        track: scored[0],
+        alternatives: scored.slice(1)
+      }
+    };
+  } catch (error: any) {
+    console.error('[YOUTUBE SERVER] Error resolving track:', error?.message || error);
+    return {
+      status: 500,
+      data: { success: false, error: 'Failed to resolve YouTube video on server.' }
+    };
+  }
+}
 
-    return res.json({
-      success: true,
-      track: bestMatch,
-      alternatives
-    });
+// YouTube Data API v3 Resolution Endpoint (verifies status.embeddable === true via videos.list)
+app.get('/api/youtube/resolve', async (req, res) => {
+  try {
+    const title = (req.query.title as string) || '';
+    const artist = (req.query.artist as string) || '';
+    const rawQuery = (req.query.q as string) || `${title} ${artist} official`;
+    const { status, data } = await handleYouTubeResolve(rawQuery, title, artist);
+    return res.status(status).json(data);
   } catch (error: any) {
     console.error('[YOUTUBE SERVER] Error resolving track:', error?.message || error);
     return res.status(500).json({
@@ -714,13 +722,13 @@ async function fetchITunesSearchFallback(query: string, maxResults: number = 15)
 }
 
 // Shared YouTube Search Handler with Multi-Tier Resolution
-async function handleYouTubeSearch(
+export async function handleYouTubeSearch(
   query: string,
   maxResultsParam: number = 20
 ) {
   const cleanQuery = (query || '').trim();
   if (!cleanQuery) {
-    return { status: 200, data: { success: true, results: [] } };
+    return { status: 200, data: { success: true, results: [], items: [] } };
   }
 
   const limit = Math.min(Math.max(1, maxResultsParam), 25);
@@ -729,11 +737,11 @@ async function handleYouTubeSearch(
   if (serverSearchCache.has(cacheKey)) {
     const cached = serverSearchCache.get(cacheKey)!;
     if (Date.now() - cached.timestamp < SERVER_CACHE_TTL_MS) {
-      return { status: 200, data: { success: true, results: cached.results, cached: true } };
+      return { status: 200, data: { success: true, results: cached.results, items: cached.results, cached: true } };
     }
   }
 
-  const apiKey = process.env.YOUTUBE_API_KEY;
+  const apiKey = process.env.YOUTUBE_API_KEY || process.env.VITE_YOUTUBE_API_KEY;
 
   // Tier 1: Try Official YouTube Data API v3 if key exists
   if (apiKey) {
@@ -757,7 +765,7 @@ async function handleYouTubeSearch(
         if (searchData.items && Array.isArray(searchData.items) && searchData.items.length > 0) {
           const candidateVideoIds: string[] = searchData.items
             .map((item: any) => item.id?.videoId)
-            .filter((vid: string | undefined): vid is string => Boolean(vid) && /^[a-zA-Z0-9_-]{11}$/.test(vid));
+            .filter((vid: string | undefined): vid is string => Boolean(vid) && typeof vid === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(vid.trim()));
 
           if (candidateVideoIds.length > 0) {
             let videoDetailsMap: Record<
@@ -801,12 +809,13 @@ async function handleYouTubeSearch(
             const results = searchData.items
               .map((item: any) => {
                 const videoId = item.id?.videoId;
-                if (!videoId) return null;
+                if (!videoId || typeof videoId !== 'string' || videoId.trim().length === 0) return null;
+                const cleanVid = videoId.trim();
 
                 const snippet = item.snippet || {};
                 const title = snippet.title || 'Unknown Track';
                 const channelTitle = snippet.channelTitle || 'YouTube Music';
-                const details = videoDetailsMap[videoId] || {
+                const details = videoDetailsMap[cleanVid] || {
                   embeddable: true,
                   durationSeconds: 225,
                   duration: '03:45',
@@ -819,7 +828,7 @@ async function handleYouTubeSearch(
                   snippet.thumbnails?.high?.url ||
                   snippet.thumbnails?.medium?.url ||
                   snippet.thumbnails?.default?.url ||
-                  `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+                  `https://i.ytimg.com/vi/${cleanVid}/hqdefault.jpg`;
 
                 let score = 50;
                 const lowerTitle = title.toLowerCase();
@@ -842,14 +851,14 @@ async function handleYouTubeSearch(
                 if (/lyric video|lyrics/i.test(lowerTitle)) score += 15;
 
                 return {
-                  id: `yt-${videoId}`,
+                  id: `yt-${cleanVid}`,
                   title,
                   channelTitle,
                   artist: channelTitle,
                   thumbnailUrl,
                   thumbnail: thumbnailUrl,
-                  videoId,
-                  externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+                  videoId: cleanVid,
+                  externalUrl: `https://www.youtube.com/watch?v=${cleanVid}`,
                   provider: 'youtube',
                   embeddable: true,
                   duration: details.duration,
@@ -871,7 +880,7 @@ async function handleYouTubeSearch(
 
               return {
                 status: 200,
-                data: { success: true, results, primaryVideo: results[0], source: 'official_api' }
+                data: { success: true, results, items: results, primaryVideo: results[0], source: 'official_api' }
               };
             }
           }
@@ -884,57 +893,61 @@ async function handleYouTubeSearch(
 
   // Tier 2: Internal YouTube Inner API (/youtubei/v1/search - no key required)
   const innerResults = await fetchYouTubeInnerAPI(cleanQuery, limit);
-  if (innerResults && innerResults.length > 0) {
+  const validInner = (innerResults || []).filter((r: any) => typeof r.videoId === 'string' && r.videoId.trim().length > 0);
+  if (validInner && validInner.length > 0) {
     serverSearchCache.set(cacheKey, {
       timestamp: Date.now(),
-      results: innerResults
+      results: validInner
     });
     return {
       status: 200,
-      data: { success: true, results: innerResults, primaryVideo: innerResults[0], source: 'inner_api' }
+      data: { success: true, results: validInner, items: validInner, primaryVideo: validInner[0], source: 'inner_api' }
     };
   }
 
   // Tier 3: Web Search Scraper
   const webResults = await scrapeYouTubeWebSearch(cleanQuery, limit);
-  if (webResults && webResults.length > 0) {
+  const validWeb = (webResults || []).filter((r: any) => typeof r.videoId === 'string' && r.videoId.trim().length > 0);
+  if (validWeb && validWeb.length > 0) {
     serverSearchCache.set(cacheKey, {
       timestamp: Date.now(),
-      results: webResults
+      results: validWeb
     });
     return {
       status: 200,
-      data: { success: true, results: webResults, primaryVideo: webResults[0], source: 'web_scraper' }
+      data: { success: true, results: validWeb, items: validWeb, primaryVideo: validWeb[0], source: 'web_scraper' }
     };
   }
 
   // Tier 4: Invidious / Piped API Fallback
   const pipedResults = await fetchInvidiousOrPipedFallback(cleanQuery, limit);
-  if (pipedResults && pipedResults.length > 0) {
+  const validPiped = (pipedResults || []).filter((r: any) => typeof r.videoId === 'string' && r.videoId.trim().length > 0);
+  if (validPiped && validPiped.length > 0) {
     serverSearchCache.set(cacheKey, {
       timestamp: Date.now(),
-      results: pipedResults
+      results: validPiped
     });
     return {
       status: 200,
-      data: { success: true, results: pipedResults, primaryVideo: pipedResults[0], source: 'piped_api' }
+      data: { success: true, results: validPiped, items: validPiped, primaryVideo: validPiped[0], source: 'piped_api' }
     };
   }
 
   // Tier 5: iTunes Search Fallback
   const iTunesResults = await fetchITunesSearchFallback(cleanQuery, limit);
-  if (iTunesResults && iTunesResults.length > 0) {
+  const validITunes = (iTunesResults || []).filter((r: any) => typeof r.videoId === 'string' && r.videoId.trim().length > 0);
+  if (validITunes && validITunes.length > 0) {
     serverSearchCache.set(cacheKey, {
       timestamp: Date.now(),
-      results: iTunesResults
+      results: validITunes
     });
     return {
       status: 200,
-      data: { success: true, results: iTunesResults, primaryVideo: iTunesResults[0], source: 'itunes_api' }
+      data: { success: true, results: validITunes, items: validITunes, primaryVideo: validITunes[0], source: 'itunes_api' }
     };
   }
 
-  return { status: 200, data: { success: true, results: [] } };
+  return { status: 200, data: { success: true, results: [], items: [] } };
 }
 
 // POST /api/youtube/search

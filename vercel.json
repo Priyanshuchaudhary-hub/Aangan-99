@@ -1,5 +1,10 @@
 {
+  "version": 2,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" }
+    { "source": "/api/youtube/search", "destination": "/api/youtube/search" },
+    { "source": "/api/youtube/resolve", "destination": "/api/youtube/resolve" },
+    { "source": "/api/health", "destination": "/api/health" },
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/((?!api/|assets/|favicon.ico|.*\\..*).*)", "destination": "/index.html" }
   ]
 }
