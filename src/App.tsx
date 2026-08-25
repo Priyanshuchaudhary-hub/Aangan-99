@@ -6,6 +6,7 @@ import { Home } from './pages/Home.tsx';
 import { audioSynthesizer } from './utils/audioSynthesizer.ts';
 import { MusicProvider } from './context/MusicContext.tsx';
 import { PersistentMediaLayer } from './components/PersistentMediaLayer.tsx';
+import { MusicDebugPanel } from './components/MusicDebugPanel.tsx';
 
 export default function App() {
   const [selectedYear, setSelectedYear] = useState<number>(1999);
@@ -44,6 +45,7 @@ export default function App() {
   return (
     <MusicProvider>
       <PersistentMediaLayer />
+      <MusicDebugPanel />
       <AnimatePresence>
         {isBooting && (
           <CinematicBootSequence

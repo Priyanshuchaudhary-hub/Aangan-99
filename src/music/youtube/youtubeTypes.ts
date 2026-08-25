@@ -24,6 +24,7 @@ export interface VerifiedTrack {
   provider: "youtube";
   providerTrackId: string;
   youtubeVideoId: string;
+  videoId?: string;
   externalUrl: string;
   thumbnailUrl: string;
   verified: boolean;

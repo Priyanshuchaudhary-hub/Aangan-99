@@ -69,24 +69,33 @@ export class YouTubeProvider extends BaseProvider {
     this.durationSeconds = track.durationSeconds || 180;
 
     // Helper to check valid YouTube video ID format (11 alphanumeric, underscore, hyphen)
-    const isValidId = (id?: string | null) => typeof id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(id);
-
-    // Resolve track via YouTube Data API v3 verification if needed
-    let resolved = await YouTubeProviderService.getInstance().resolvePlayableYouTubeVideo(track);
+    const isValidId = (id?: string | null) => typeof id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(id.trim());
 
     let ytVideoId: string | null = null;
-    if (resolved?.youtubeVideoId && isValidId(resolved.youtubeVideoId)) {
-      ytVideoId = resolved.youtubeVideoId;
+    if (track.videoId && isValidId(track.videoId)) {
+      ytVideoId = track.videoId.trim();
+    } else if (track.youtubeVideoId && isValidId(track.youtubeVideoId)) {
+      ytVideoId = track.youtubeVideoId.trim();
     } else if (track.youtubeId && isValidId(track.youtubeId)) {
-      ytVideoId = track.youtubeId;
+      ytVideoId = track.youtubeId.trim();
     } else if (track.providerTrackId && isValidId(track.providerTrackId)) {
-      ytVideoId = track.providerTrackId;
+      ytVideoId = track.providerTrackId.trim();
     }
 
-    // Guaranteed fallback to verified public embeddable video if no valid 11-char ID exists
+    let resolved = null;
     if (!ytVideoId) {
-      console.log(`[YOUTUBE PROVIDER] No valid 11-char video ID found for "${track.title}". Using verified fallback video ID.`);
-      ytVideoId = 'Umqb9KENgmk'; // Tum Hi Ho - verified public embeddable video
+      // Resolve track via YouTube Data API v3 verification if no explicit ID exists
+      resolved = await YouTubeProviderService.getInstance().resolvePlayableYouTubeVideo(track);
+      if (resolved?.youtubeVideoId && isValidId(resolved.youtubeVideoId)) {
+        ytVideoId = resolved.youtubeVideoId.trim();
+      }
+    }
+
+    // Strictly validate videoId without silent hardcoded fallback
+    if (!ytVideoId) {
+      console.error(`[YOUTUBE PROVIDER] Cannot play track: missing YouTube videoId for "${track.title}"`, track);
+      this.setState('UNAVAILABLE', 'This track has no playable YouTube video.');
+      return;
     }
 
     const verifiedTrack: VerifiedTrack = {
@@ -98,9 +107,10 @@ export class YouTubeProvider extends BaseProvider {
       provider: 'youtube',
       providerTrackId: ytVideoId,
       youtubeVideoId: ytVideoId,
+      videoId: ytVideoId,
       externalUrl: resolved?.externalUrl || track.externalUrl || `https://www.youtube.com/watch?v=${ytVideoId}`,
       thumbnailUrl: resolved?.thumbnailUrl || track.artwork || `https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg`,
-      verified: Boolean(resolved?.verified),
+      verified: Boolean(resolved?.verified ?? true),
       embeddable: resolved ? resolved.embeddable : true,
       sourceType: 'official',
       playlists: track.playlistIds || [],
@@ -114,14 +124,16 @@ export class YouTubeProvider extends BaseProvider {
     // Update currentTrack with verified video ID and thumbnail
     this.currentTrack = {
       ...track,
+      videoId: ytVideoId,
       providerTrackId: ytVideoId,
       youtubeId: ytVideoId,
+      youtubeVideoId: ytVideoId,
       artwork: verifiedTrack.thumbnailUrl || `https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg`,
       durationSeconds: verifiedTrack.durationSeconds || track.durationSeconds || 180,
       duration: verifiedTrack.duration || track.duration || '03:00',
     };
 
-    await this.ytPlayerEngine.loadTrack(verifiedTrack, false);
+    await this.ytPlayerEngine.loadTrack(verifiedTrack, true);
   }
 
   public async loadPlaylist(playlist: NostalgiaPlaylist, tracks: NostalgiaTrack[]): Promise<void> {

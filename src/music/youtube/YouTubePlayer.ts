@@ -8,6 +8,12 @@ import { YOUTUBE_CONFIG } from './youtubeConfig.ts';
 import { YouTubeProviderService } from './YouTubeProvider.ts';
 import { loadYouTubeIframeAPI } from './youtubeApiLoader.ts';
 
+export function isValidVideoId(videoId?: string | null): boolean {
+  if (typeof videoId !== 'string') return false;
+  const trimmed = videoId.trim();
+  return trimmed.length > 0 && /^[a-zA-Z0-9_-]{11}$/.test(trimmed);
+}
+
 export class YouTubePlayer {
   private static instance: YouTubePlayer | null = null;
 
@@ -19,6 +25,7 @@ export class YouTubePlayer {
 
   private currentState: PlaybackState = 'idle';
   private currentTrack: VerifiedTrack | null = null;
+  private currentVideoId: string = '';
   private currentTime = 0;
   private duration = 0;
   private volume = 100; // 0 to 100
@@ -26,6 +33,7 @@ export class YouTubePlayer {
   private lastError: string | null = null;
   private pollInterval: number | null = null;
   private pendingTrackToLoad: VerifiedTrack | null = null;
+  private pendingVideoIdToLoad: string | null = null;
   private pendingPlayOnReady = false;
   private isAutoFallbackAttempted = false;
 
@@ -221,7 +229,7 @@ export class YouTubePlayer {
   private async handleError(event: any) {
     this.stopProgressPolling();
     const code = event.data;
-    const videoId = this.currentTrack?.youtubeVideoId || 'unknown';
+    const videoId = this.currentVideoId || this.currentTrack?.youtubeVideoId || 'unknown';
 
     console.warn('[YOUTUBE ENGINE onError]', {
       videoId,
@@ -231,7 +239,7 @@ export class YouTubePlayer {
     });
 
     let mappedErrorType = 'UNKNOWN_ERROR';
-    let userFriendlyMessage = 'THE SIGNAL IS LOST. THIS TRACK WON’T PLAY HERE.';
+    let userFriendlyMessage = 'Unable to play this video.';
 
     if (code === 101 || code === 150) {
       mappedErrorType = 'VIDEO_NOT_EMBEDDABLE';
@@ -244,51 +252,16 @@ export class YouTubePlayer {
       userFriendlyMessage = 'HTML5 PLAYER ERROR: The requested content cannot be played in HTML5 player.';
     }
 
-    // Auto-fallback check if video restricted or not found
-    if ((code === 101 || code === 150 || code === 2 || code === 100) && this.currentTrack && !this.isAutoFallbackAttempted) {
-      this.isAutoFallbackAttempted = true;
-      console.log(`[YOUTUBE ENGINE] Video ${videoId} restricted/unavailable (code ${code}). Attempting auto-fallback resolution...`);
-
-      // Invalidate cache entry for this track/videoId
-      const provider = YouTubeProviderService.getInstance();
+    // Invalidate cache for this video
+    const provider = YouTubeProviderService.getInstance();
+    if (this.currentTrack?.id) {
       provider.invalidateCache(this.currentTrack.id);
-      if (videoId && videoId !== 'unknown') {
-        provider.invalidateCache(videoId);
-      }
-
-      try {
-        const resolved = await provider.resolvePlayableYouTubeVideo({
-          id: this.currentTrack.id,
-          title: this.currentTrack.title,
-          artist: this.currentTrack.artist
-        });
-
-        if (resolved && resolved.youtubeVideoId && resolved.youtubeVideoId !== videoId && resolved.embeddable) {
-          console.log(`[YOUTUBE ENGINE] Auto-fallback found alternative verified videoId: ${resolved.youtubeVideoId}`);
-          this.currentTrack.youtubeVideoId = resolved.youtubeVideoId;
-          this.currentTrack.providerTrackId = resolved.youtubeVideoId;
-          this.currentTrack.embeddable = true;
-          this.currentTrack.verified = true;
-          await this.loadTrack(this.currentTrack, true);
-          return;
-        }
-      } catch (err) {
-        console.warn('[YOUTUBE ENGINE] Auto-fallback search failed:', err);
-      }
-
-      // Guaranteed fallback to verified public embeddable video ID if resolution returned same restricted video
-      const fallbackVideoId = 'Umqb9KENgmk'; // Tum Hi Ho - T-Series verified embeddable
-      if (videoId !== fallbackVideoId) {
-        console.log(`[YOUTUBE ENGINE] Guaranteed fallback to verified public video: ${fallbackVideoId}`);
-        this.currentTrack.youtubeVideoId = fallbackVideoId;
-        this.currentTrack.providerTrackId = fallbackVideoId;
-        this.currentTrack.embeddable = true;
-        this.currentTrack.verified = true;
-        await this.loadTrack(this.currentTrack, true);
-        return;
-      }
+    }
+    if (videoId && videoId !== 'unknown') {
+      provider.invalidateCache(videoId);
     }
 
+    // Do NOT replace with Tum Hi Ho! Display clear error so user can retry or click next.
     this.updateState('unavailable', userFriendlyMessage, code, mappedErrorType);
   }
 
@@ -311,19 +284,25 @@ export class YouTubePlayer {
   }
 
   /**
-   * Triggers the embedded YouTube player to load a verified test video ID
-   * and calls player.playVideo() ONLY AFTER the READY state is confirmed.
+   * Load video by raw YouTube video ID directly
    */
-  public async testYouTubePlayback(videoId: string = 'Umqb9KENgmk'): Promise<void> {
-    const testTrack: VerifiedTrack = {
-      id: `yt-test-${videoId}`,
-      title: 'Tum Hi Ho (Official Video)',
-      artist: 'Arijit Singh & Mithoon',
-      album: 'Verified Test Track',
-      year: 1999,
+  public async loadVideo(videoId: string, autoPlay = true): Promise<void> {
+    if (!isValidVideoId(videoId)) {
+      console.error('[RADIO] Cannot play track: missing or invalid YouTube videoId:', videoId);
+      this.updateState('unavailable', 'This track has no playable YouTube video.');
+      return;
+    }
+
+    const videoTrack: VerifiedTrack = {
+      id: `yt-${videoId}`,
+      title: this.currentTrack?.title || 'YouTube Audio',
+      artist: this.currentTrack?.artist || 'YouTube Music',
+      album: 'YouTube Archive',
+      year: 2024,
       provider: 'youtube',
       providerTrackId: videoId,
       youtubeVideoId: videoId,
+      videoId: videoId,
       externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
       thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       verified: true,
@@ -336,48 +315,81 @@ export class YouTubePlayer {
       duration: '04:00'
     };
 
-    console.log('[YOUTUBE ENGINE] "Test YouTube Playback" triggered for videoId:', videoId);
+    await this.loadTrack(videoTrack, autoPlay);
+  }
 
-    if (!this.isPlayerReady || !this.player || typeof this.player.playVideo !== 'function') {
-      console.log('[YOUTUBE ENGINE] Player READY state NOT confirmed yet. Queuing test video and waiting for onReady event...');
-      this.pendingTrackToLoad = testTrack;
-      this.pendingPlayOnReady = true;
-      await this.initialize();
-    } else {
-      console.log('[YOUTUBE ENGINE] Player READY state CONFIRMED. Loading video ID and calling player.playVideo()...');
-      await this.loadTrack(testTrack, true);
-      try {
-        if (typeof this.player.playVideo === 'function') {
-          this.player.playVideo();
-        }
-      } catch (err) {
-        console.warn('[YOUTUBE ENGINE] Error calling playVideo() on ready player:', err);
-      }
-    }
+  /**
+   * Load video by YouTube video ID (alias)
+   */
+  public async loadVideoById(videoId: string): Promise<void> {
+    await this.loadVideo(videoId, true);
+  }
+
+  /**
+   * Triggers the embedded YouTube player to load a verified test video ID
+   */
+  public async testYouTubePlayback(videoId: string = 'Umqb9KENgmk'): Promise<void> {
+    const testTrack: VerifiedTrack = {
+      id: `yt-test-${videoId}`,
+      title: 'Tum Hi Ho (Official Video)',
+      artist: 'Arijit Singh & Mithoon',
+      album: 'Verified Test Track',
+      year: 2013,
+      provider: 'youtube',
+      providerTrackId: videoId,
+      youtubeVideoId: videoId,
+      videoId: videoId,
+      externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      verified: true,
+      embeddable: true,
+      sourceType: 'official',
+      playlists: [],
+      memories: [],
+      moods: ['nostalgic'],
+      durationSeconds: 262,
+      duration: '04:22'
+    };
+
+    console.log('[YOUTUBE ENGINE] "Test YouTube Playback" triggered for videoId:', videoId);
+    await this.loadTrack(testTrack, true);
   }
 
   /**
    * Load track by YouTube video ID
    */
-  public async loadTrack(track: VerifiedTrack, autoPlay = false): Promise<void> {
-    this.currentTrack = track;
+  public async loadTrack(track: VerifiedTrack, autoPlay = true): Promise<void> {
+    const rawVideoId = track.videoId || track.youtubeVideoId || track.providerTrackId;
+
+    if (!isValidVideoId(rawVideoId)) {
+      console.error('[RADIO] Cannot play track: missing or invalid YouTube videoId:', track);
+      this.updateState('unavailable', 'This track has no playable YouTube video.');
+      return;
+    }
+
+    const videoId = rawVideoId.trim();
+
+    this.currentVideoId = videoId;
+    this.currentTrack = {
+      ...track,
+      videoId,
+      youtubeVideoId: videoId,
+      providerTrackId: videoId
+    };
     this.currentTime = 0;
     this.duration = track.durationSeconds || 180;
     this.lastError = null;
     this.isAutoFallbackAttempted = false;
 
-    const isValidId = (id?: string | null) => typeof id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(id);
-
-    if (!track.youtubeVideoId || !isValidId(track.youtubeVideoId)) {
-      console.warn(`[YOUTUBE ENGINE] Non-standard or missing video ID "${track.youtubeVideoId}". Fallback to verified video.`);
-      track.youtubeVideoId = 'Umqb9KENgmk';
-      track.providerTrackId = 'Umqb9KENgmk';
-    }
-
-    console.log('[YOUTUBE ENGINE] Loading video:', track.youtubeVideoId);
+    // Required developer verification logs
+    console.log('[RADIO] Selected track:', track.title);
+    console.log('[RADIO] Selected videoId:', videoId);
+    console.log('[RADIO] Loading video:', videoId);
+    console.log('[RADIO] Current player video:', this.currentVideoId);
 
     if (!this.isPlayerReady || !this.player || typeof this.player.loadVideoById !== 'function') {
-      this.pendingTrackToLoad = track;
+      this.pendingTrackToLoad = this.currentTrack;
+      this.pendingVideoIdToLoad = videoId;
       this.pendingPlayOnReady = autoPlay;
       this.initialize();
       return;
@@ -387,9 +399,9 @@ export class YouTubePlayer {
 
     try {
       if (autoPlay) {
-        this.player.loadVideoById(track.youtubeVideoId);
+        this.player.loadVideoById(videoId);
       } else {
-        this.player.cueVideoById(track.youtubeVideoId);
+        this.player.cueVideoById(videoId);
         this.updateState('paused');
       }
     } catch (err: any) {
@@ -409,12 +421,11 @@ export class YouTubePlayer {
     }
 
     try {
-      if (this.currentTrack) {
-        const isValidId = (id?: string | null) => typeof id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(id);
-        const vid = isValidId(this.currentTrack.youtubeVideoId) ? this.currentTrack.youtubeVideoId : 'Umqb9KENgmk';
+      if (this.currentVideoId && isValidVideoId(this.currentVideoId)) {
         const state = typeof this.player.getPlayerState === 'function' ? this.player.getPlayerState() : -1;
+        // If unstarted (-1), cued (5), or ended (0), ensure loadVideoById is invoked for currentVideoId
         if (state === -1 || state === 5 || state === 0) {
-          this.player.loadVideoById(vid);
+          this.player.loadVideoById(this.currentVideoId);
         } else {
           this.player.playVideo();
         }
@@ -428,12 +439,26 @@ export class YouTubePlayer {
   }
 
   /**
+   * Play (alias for standard player interface)
+   */
+  public async play(): Promise<void> {
+    await this.playVideo();
+  }
+
+  /**
    * Pause official video
    */
   public pauseVideo(): void {
     if (this.player && typeof this.player.pauseVideo === 'function') {
       this.player.pauseVideo();
     }
+  }
+
+  /**
+   * Pause (alias for standard player interface)
+   */
+  public pause(): void {
+    this.pauseVideo();
   }
 
   /**
@@ -445,6 +470,14 @@ export class YouTubePlayer {
       this.currentTime = seconds;
       this.notifyListeners();
     }
+  }
+
+  public getCurrentVideoId(): string {
+    return this.currentVideoId;
+  }
+
+  public getCurrentTrack(): VerifiedTrack | null {
+    return this.currentTrack;
   }
 
   /**

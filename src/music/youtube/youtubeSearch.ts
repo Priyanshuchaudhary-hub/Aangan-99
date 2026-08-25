@@ -1027,19 +1027,23 @@ export function getTracksForMemory(memoryId: string): YouTubeSearchResultTrack[]
 export function convertSearchResultToNostalgiaTrack(
   result: YouTubeSearchResultTrack
 ): NostalgiaTrack {
+  const vid = result.videoId.trim();
   return {
-    id: result.id || `yt-${result.videoId}`,
+    id: result.id || `yt-${vid}`,
     title: result.title,
     artist: result.artist || result.channelTitle,
     album: result.genre || 'YouTube Archive',
     year: result.year || 2024,
     duration: result.duration || '03:45',
     durationSeconds: result.durationSeconds || 225,
-    artwork: result.thumbnail || `https://i.ytimg.com/vi/${result.videoId}/hqdefault.jpg`,
+    artwork: result.thumbnail || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+    thumbnailUrl: result.thumbnail || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
     provider: 'youtube',
-    providerTrackId: result.videoId,
-    youtubeId: result.videoId,
-    externalUrl: result.externalUrl || `https://www.youtube.com/watch?v=${result.videoId}`,
+    providerTrackId: vid,
+    videoId: vid,
+    youtubeId: vid,
+    youtubeVideoId: vid,
+    externalUrl: result.externalUrl || `https://www.youtube.com/watch?v=${vid}`,
     playlistIds: ['summer-vacation-mix'],
     memoryIds: result.memoryIds || [],
     tags: ['youtube', 'archive-search', ...(result.genre ? [result.genre] : [])],

@@ -125,17 +125,28 @@ export class MusicPlayerManager {
   public async playTrack(track: NostalgiaTrack, playlist?: NostalgiaPlaylist): Promise<void> {
     if (!this.activeProvider) return;
 
+    const rawVideoId = track.videoId || track.youtubeVideoId || track.youtubeId || track.providerTrackId;
+    const normalizedTrack: NostalgiaTrack = {
+      ...track,
+      videoId: rawVideoId || track.videoId,
+      youtubeVideoId: rawVideoId || track.youtubeVideoId,
+      youtubeId: rawVideoId || track.youtubeId,
+      providerTrackId: rawVideoId || track.providerTrackId
+    };
+
     // Update queue index if track is in queue
-    const idx = this.queue.findIndex((t) => t.id === track.id);
+    const idx = this.queue.findIndex(
+      (t) => t.id === track.id || (rawVideoId && (t.videoId === rawVideoId || t.youtubeId === rawVideoId))
+    );
     if (idx >= 0) {
       this.queueIndex = idx;
+      this.queue[idx] = normalizedTrack;
     } else {
-      this.queue = [track, ...this.queue];
+      this.queue = [normalizedTrack, ...this.queue];
       this.queueIndex = 0;
     }
 
-    await this.activeProvider.loadTrack(track);
-    await this.activeProvider.play();
+    await this.activeProvider.loadTrack(normalizedTrack);
   }
 
   public async togglePlayPause(): Promise<void> {

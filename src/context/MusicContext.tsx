@@ -10,6 +10,126 @@ import { musicPlayerManager, RepeatMode } from '../music/player/MusicPlayerManag
 import { audioSynthesizer } from '../utils/audioSynthesizer.ts';
 import { YouTubePlayer } from '../music/youtube/YouTubePlayer.ts';
 
+/* =========================================================================
+   CURATED VERIFIED SONGS (KNOWN-GOOD YOUTUBE BASELINE)
+   1. Tum Hi Ho (Umqb9KENgmk) - Arijit Singh
+   2. Khaabon Ke Parinday (cscdqZUdgCk) - Mohit Chauhan
+   3. Aankhon Mein Teri (fP7i2j0-B7E) - KK
+   ========================================================================= */
+export const VERIFIED_SONGS: NostalgiaTrack[] = [
+  {
+    id: 'tr-tum-hi-ho',
+    title: 'Tum Hi Ho',
+    artist: 'Arijit Singh & Mithoon',
+    album: 'Aashiqui 2 (2013)',
+    year: 2013,
+    duration: '04:22',
+    durationSeconds: 262,
+    artwork: 'https://i.ytimg.com/vi/Umqb9KENgmk/hqdefault.jpg',
+    provider: 'youtube',
+    providerTrackId: 'Umqb9KENgmk',
+    youtubeId: 'Umqb9KENgmk',
+    youtubeVideoId: 'Umqb9KENgmk',
+    videoId: 'Umqb9KENgmk',
+    previewUrl: 'https://www.youtube.com/watch?v=Umqb9KENgmk',
+    externalUrl: 'https://www.youtube.com/watch?v=Umqb9KENgmk',
+    playlistIds: ['school-bus-radio', 'first-love', 'rainy-window', 'summer-vacation-mix'],
+    memoryIds: ['terrace-evening', 'first-computer', 'summer-vacation'],
+    tags: ['arijit-singh', 'tum-hi-ho', 'aashiqui-2', 't-series', 'love-song'],
+    mood: ['romantic', 'melancholic', 'emotional'],
+    language: 'Hindi',
+    storyNote: 'Official Arijit Singh - Tum Hi Ho verified baseline track.',
+    verified: true,
+    embeddable: true,
+    playable: true,
+    loadResult: 'PASS',
+    playbackResult: 'PASS'
+  },
+  {
+    id: 'tr-khaabon-ke-parinday',
+    title: 'Khaabon Ke Parinday',
+    artist: 'Mohit Chauhan & Alyssa Mendonsa',
+    album: 'Zindagi Na Milegi Dobara (2011)',
+    year: 2011,
+    duration: '04:13',
+    durationSeconds: 253,
+    artwork: 'https://i.ytimg.com/vi/cscdqZUdgCk/hqdefault.jpg',
+    provider: 'youtube',
+    providerTrackId: 'cscdqZUdgCk',
+    youtubeId: 'cscdqZUdgCk',
+    youtubeVideoId: 'cscdqZUdgCk',
+    videoId: 'cscdqZUdgCk',
+    externalUrl: 'https://www.youtube.com/watch?v=cscdqZUdgCk',
+    playlistIds: ['road-trip-2000s', 'terrace-9pm', 'summer-vacation-mix'],
+    memoryIds: ['summer-vacation', 'old-railway-journey'],
+    tags: ['mohit-chauhan', 'khaabon-ke-parinday', 'znmd', 'road-trip'],
+    mood: ['carefree', 'peaceful', 'travel'],
+    language: 'Hindi',
+    storyNote: 'Road trip across Spain with breeze flowing through open windows.',
+    verified: true,
+    embeddable: true,
+    playable: true,
+    loadResult: 'PASS',
+    playbackResult: 'PASS'
+  },
+  {
+    id: 'tr-aankhon-mein-teri',
+    title: 'Aankhon Mein Teri',
+    artist: 'KK',
+    album: 'Om Shanti Om (2007)',
+    year: 2007,
+    duration: '04:02',
+    durationSeconds: 242,
+    artwork: 'https://i.ytimg.com/vi/fP7i2j0-B7E/hqdefault.jpg',
+    provider: 'youtube',
+    providerTrackId: 'fP7i2j0-B7E',
+    youtubeId: 'fP7i2j0-B7E',
+    youtubeVideoId: 'fP7i2j0-B7E',
+    videoId: 'fP7i2j0-B7E',
+    externalUrl: 'https://www.youtube.com/watch?v=fP7i2j0-B7E',
+    playlistIds: ['first-love', 'terrace-9pm', 'late-night-fm'],
+    memoryIds: ['relic-trunk', 'school-assembly', 'terrace-evening'],
+    tags: ['kk', 'aankhon-mein-teri', 'om-shanti-om', 't-series'],
+    mood: ['romantic', 'emotional', 'nostalgic'],
+    language: 'Hindi',
+    storyNote: 'KK singing for Shah Rukh Khan in Om Shanti Om.',
+    verified: true,
+    embeddable: true,
+    playable: true,
+    loadResult: 'PASS',
+    playbackResult: 'PASS'
+  }
+];
+
+/**
+ * Validates that a track or input has a non-empty, string-based YouTube videoId.
+ * Checks videoId, youtubeVideoId, youtubeId, providerTrackId or a direct string ID.
+ * Returns the trimmed valid videoId string if valid, or null if missing/empty/non-string.
+ */
+export function validateTrackVideoId(track?: Partial<NostalgiaTrack> | string | null): string | null {
+  if (!track) return null;
+
+  if (typeof track === 'string') {
+    const trimmed = track.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  const candidate =
+    track.videoId ||
+    track.youtubeVideoId ||
+    track.youtubeId ||
+    track.providerTrackId;
+
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+
+  return null;
+}
+
 interface MusicContextType {
   currentTrack: NostalgiaTrack;
   playbackState: PlaybackState;
@@ -37,6 +157,17 @@ interface MusicContextType {
   favoritePlaylistIds: string[];
   listeningHistory: { trackId: string; playedAt: number; memoryId?: string }[];
   radioHostQuote: RadioHostMessage | null;
+
+  // Curated Verified Songs
+  verifiedSongs: NostalgiaTrack[];
+  playVerifiedSong: (songKeyOrId: 'tum-hi-ho' | 'khaabon-ke-parinday' | 'aankhon-mein-teri' | string | number | NostalgiaTrack) => Promise<void>;
+  playTumHiHo: () => Promise<void>;
+  playKhaabonKeParinday: () => Promise<void>;
+  playAankhonMeinTeri: () => Promise<void>;
+
+  // Video Validation & Direct Player Helper
+  validateTrackVideoId: (track?: Partial<NostalgiaTrack> | string | null) => string | null;
+  loadVideo: (trackOrVideoId: NostalgiaTrack | string, autoPlay?: boolean) => Promise<void>;
 
   // Actions
   playTrack: (track: NostalgiaTrack, playlist?: NostalgiaPlaylist, memoryId?: string) => Promise<void>;
@@ -202,13 +333,53 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (playlist) setActivePlaylist(playlist);
     setIsAutoplayAllowed(true);
 
+    const validVideoId = validateTrackVideoId(track);
+    if (!validVideoId) {
+      console.error(
+        `[MUSIC CONTEXT] Cannot play track "${track?.title || 'Unknown'}": Missing non-empty string-based YouTube videoId.`,
+        track
+      );
+      setErrorDetails(`Cannot play track: missing YouTube video ID for "${track?.title || 'Unknown'}".`);
+      setPlaybackState('UNAVAILABLE');
+      return;
+    }
+
     // Record history
     setListeningHistory((prev) => [
       { trackId: track.id, playedAt: Date.now(), memoryId },
       ...prev.filter((h) => h.trackId !== track.id)
     ]);
 
-    await musicPlayerManager.playTrack(track, playlist);
+    const normalizedTrack: NostalgiaTrack = {
+      ...track,
+      videoId: validVideoId,
+      youtubeVideoId: validVideoId,
+      youtubeId: validVideoId,
+      providerTrackId: validVideoId
+    };
+
+    setCurrentTrack(normalizedTrack);
+    await musicPlayerManager.playTrack(normalizedTrack, playlist);
+  };
+
+  const loadVideo = async (trackOrVideoId: NostalgiaTrack | string, autoPlay = true): Promise<void> => {
+    const validId = validateTrackVideoId(trackOrVideoId);
+    if (!validId) {
+      const trackTitle =
+        typeof trackOrVideoId === 'object' && trackOrVideoId
+          ? trackOrVideoId.title
+          : String(trackOrVideoId);
+      console.error(
+        `[MUSIC CONTEXT] Cannot load video for "${trackTitle}": missing or empty string-based YouTube videoId.`,
+        trackOrVideoId
+      );
+      setErrorDetails(`Cannot load video: missing YouTube video ID for "${trackTitle}".`);
+      setPlaybackState('UNAVAILABLE');
+      return;
+    }
+
+    const player = YouTubePlayer.getInstance();
+    await player.loadVideo(validId, autoPlay);
   };
 
   const togglePlayPause = async () => {
@@ -394,6 +565,45 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     await playTrack(customTrack);
   };
 
+  const playVerifiedSong = async (
+    songKeyOrId: 'tum-hi-ho' | 'khaabon-ke-parinday' | 'aankhon-mein-teri' | string | number | NostalgiaTrack
+  ) => {
+    audioSynthesizer.playClick('switch');
+    let targetSong: NostalgiaTrack | undefined;
+
+    if (typeof songKeyOrId === 'object' && songKeyOrId !== null) {
+      targetSong = songKeyOrId;
+    } else if (typeof songKeyOrId === 'number') {
+      targetSong = VERIFIED_SONGS[songKeyOrId] || VERIFIED_SONGS[0];
+    } else {
+      const query = String(songKeyOrId).toLowerCase().trim();
+      targetSong =
+        VERIFIED_SONGS.find(
+          (s) =>
+            s.id.toLowerCase().includes(query) ||
+            s.title.toLowerCase().includes(query) ||
+            s.providerTrackId.toLowerCase() === query ||
+            (s.videoId && s.videoId.toLowerCase() === query)
+        ) || VERIFIED_SONGS[0];
+    }
+
+    if (targetSong) {
+      await playTrack(targetSong);
+    }
+  };
+
+  const playTumHiHo = async () => {
+    await playVerifiedSong('tum-hi-ho');
+  };
+
+  const playKhaabonKeParinday = async () => {
+    await playVerifiedSong('khaabon-ke-parinday');
+  };
+
+  const playAankhonMeinTeri = async () => {
+    await playVerifiedSong('aankhon-mein-teri');
+  };
+
   return (
     <MusicContext.Provider
       value={{
@@ -427,6 +637,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         favoritePlaylistIds,
         listeningHistory,
         radioHostQuote,
+
+        // Curated Verified Songs
+        verifiedSongs: VERIFIED_SONGS,
+        playVerifiedSong,
+        playTumHiHo,
+        playKhaabonKeParinday,
+        playAankhonMeinTeri,
+
+        // Video Validation & Direct Player Helper
+        validateTrackVideoId,
+        loadVideo,
 
         playTrack,
         togglePlayPause,

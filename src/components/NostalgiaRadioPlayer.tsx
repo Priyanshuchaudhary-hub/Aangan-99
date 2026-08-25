@@ -334,35 +334,32 @@ export const NostalgiaRadioPlayer: React.FC = () => {
             <div className="mb-2.5 bg-red-950/90 border border-red-500/60 p-2.5 rounded text-xs space-y-1.5">
               <div className="flex items-center gap-1.5 text-red-400 font-bold text-[11px] uppercase">
                 <AlertTriangle className="w-4 h-4 text-red-400" />
-                <span>⚠ SIGNAL LOST</span>
+                <span>⚠ PLAYBACK ERROR</span>
               </div>
               <p className="text-[11px] text-red-200 leading-tight">
-                This song isn't available inside the embedded radio.
+                Unable to play this video.
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
                 <button
-                  onClick={async () => {
+                  onClick={() => {
                     audioSynthesizer.playClick('switch');
-                    try {
-                      const searchResults = await YouTubeProviderService.getInstance().search(`${currentTrack.title} ${currentTrack.artist}`);
-                      if (searchResults.length > 0 && searchResults[0].youtubeVideoId) {
-                        const alt = searchResults[0];
-                        await playTrack({
-                          ...currentTrack,
-                          providerTrackId: alt.youtubeVideoId,
-                          youtubeId: alt.youtubeVideoId
-                        });
-                      }
-                    } catch (err) {
-                      console.warn('Try another version failed:', err);
-                    }
+                    playTrack(currentTrack);
                   }}
                   className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] rounded uppercase tracking-wide transition-colors"
                 >
-                  [ TRY ANOTHER VERSION ]
+                  [ TRY AGAIN ]
+                </button>
+                <button
+                  onClick={() => {
+                    audioSynthesizer.playClick('switch');
+                    nextTrack();
+                  }}
+                  className="px-2.5 py-1 bg-amber-800 hover:bg-amber-700 text-white font-bold text-[10px] rounded uppercase tracking-wide transition-colors"
+                >
+                  [ NEXT SONG ]
                 </button>
                 <a
-                  href={currentTrack.externalUrl || `https://www.youtube.com/watch?v=${currentTrack.providerTrackId || currentTrack.youtubeId || ''}`}
+                  href={currentTrack.externalUrl || `https://www.youtube.com/watch?v=${currentTrack.videoId || currentTrack.providerTrackId || currentTrack.youtubeId || ''}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-700 hover:bg-red-600 text-white font-bold text-[10px] rounded uppercase tracking-wide transition-colors"
