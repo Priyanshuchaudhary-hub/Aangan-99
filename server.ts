@@ -342,6 +342,189 @@ interface ServerSearchCacheEntry {
 const serverSearchCache = new Map<string, ServerSearchCacheEntry>();
 const SERVER_CACHE_TTL_MS = 15 * 60 * 1000;
 
+// Web Scraper Fallback using ytInitialData from YouTube Search Page
+async function scrapeYouTubeWebSearch(query: string, maxResults: number = 20): Promise<any[]> {
+  try {
+    const searchQuery = query.toLowerCase().includes('song') || query.toLowerCase().includes('music')
+      ? query
+      : `${query} song`;
+    const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn('[YOUTUBE WEB SCRAPER] Search page HTTP error:', response.status);
+      return [];
+    }
+
+    const html = await response.text();
+    const match =
+      html.match(/var ytInitialData = ({.*?});<\/script>/) ||
+      html.match(/window\["ytInitialData"\] = ({.*?});/);
+
+    if (!match || !match[1]) {
+      console.warn('[YOUTUBE WEB SCRAPER] Could not extract ytInitialData');
+      return [];
+    }
+
+    let data: any;
+    try {
+      data = JSON.parse(match[1]);
+    } catch {
+      console.warn('[YOUTUBE WEB SCRAPER] JSON parse error on ytInitialData');
+      return [];
+    }
+
+    const contents =
+      data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer
+        ?.contents;
+    if (!Array.isArray(contents)) return [];
+
+    const results: any[] = [];
+
+    for (const section of contents) {
+      const items = section?.itemSectionRenderer?.contents;
+      if (!Array.isArray(items)) continue;
+
+      for (const item of items) {
+        const video = item?.videoRenderer;
+        if (!video || !video.videoId) continue;
+
+        const videoId = video.videoId;
+        if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) continue;
+
+        const title = video.title?.runs?.[0]?.text || video.title?.simpleText || 'Unknown Track';
+        const channelTitle =
+          video.ownerText?.runs?.[0]?.text ||
+          video.longBylineText?.runs?.[0]?.text ||
+          'YouTube Music';
+        const durationStr =
+          video.lengthText?.simpleText || video.lengthText?.runs?.[0]?.text || '03:45';
+
+        let durationSeconds = 225;
+        if (durationStr && durationStr.includes(':')) {
+          const parts = durationStr.split(':').map((p: string) => parseInt(p, 10));
+          if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+            durationSeconds = parts[0] * 60 + parts[1];
+          } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+            durationSeconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+          }
+        }
+
+        const thumbnail =
+          video.thumbnail?.thumbnails?.[0]?.url || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+
+        if (durationSeconds < 40 || /#shorts/i.test(title)) continue;
+
+        let score = 50;
+        const lowerTitle = title.toLowerCase();
+        const lowerChannel = channelTitle.toLowerCase();
+        const lowerQuery = query.toLowerCase();
+
+        if (lowerTitle.includes(lowerQuery)) score += 30;
+        if (/official|vevo|t-series|sony|saregama|yrf|zee|tips|venus/i.test(lowerChannel)) score += 25;
+        if (/official video|full song|audio/i.test(lowerTitle)) score += 15;
+
+        results.push({
+          id: `yt-${videoId}`,
+          title,
+          channelTitle,
+          artist: channelTitle,
+          thumbnailUrl: thumbnail,
+          thumbnail,
+          videoId,
+          externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          provider: 'youtube',
+          embeddable: true,
+          duration: durationStr,
+          durationSeconds,
+          year: 2024,
+          score
+        });
+
+        if (results.length >= maxResults) break;
+      }
+      if (results.length >= maxResults) break;
+    }
+
+    results.sort((a, b) => b.score - a.score);
+    return results;
+  } catch (err) {
+    console.warn('[YOUTUBE WEB SCRAPER] Exception:', err);
+    return [];
+  }
+}
+
+// Public Piped Search API Fallback
+async function fetchPipedSearchFallback(query: string, maxResults: number = 20): Promise<any[]> {
+  const endpoints = [
+    'https://pipedapi.kavin.rocks/search',
+    'https://api.piped.video/search',
+    'https://pipedapi.drgns.space/search'
+  ];
+
+  for (const ep of endpoints) {
+    try {
+      const url = `${ep}?q=${encodeURIComponent(query)}&filter=music_songs`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      const items = data.items || data;
+      if (!Array.isArray(items) || items.length === 0) continue;
+
+      const results: any[] = [];
+      for (const item of items) {
+        if (item.type !== 'video' && item.url) continue;
+        let videoId = item.id;
+        if (item.url && item.url.includes('v=')) {
+          videoId = item.url.split('v=')[1]?.split('&')[0];
+        }
+        if (!videoId || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) continue;
+
+        const title = item.title || 'Unknown Track';
+        const channelTitle = item.uploaderName || 'YouTube Music';
+        const durationSec = item.duration || 225;
+        const mins = Math.floor(durationSec / 60);
+        const secs = durationSec % 60;
+        const durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+        results.push({
+          id: `yt-${videoId}`,
+          title,
+          channelTitle,
+          artist: channelTitle,
+          thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          videoId,
+          externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+          provider: 'youtube',
+          embeddable: true,
+          duration: durationStr,
+          durationSeconds: durationSec,
+          year: 2024,
+          score: 40
+        });
+
+        if (results.length >= maxResults) break;
+      }
+
+      if (results.length > 0) return results;
+    } catch {
+      // Continue next endpoint
+    }
+  }
+
+  return [];
+}
+
 // Shared YouTube Search Handler
 async function handleYouTubeSearch(
   query: string,
@@ -363,216 +546,212 @@ async function handleYouTubeSearch(
   }
 
   const apiKey = process.env.YOUTUBE_API_KEY;
-  if (!apiKey) {
-    console.warn('[YOUTUBE SEARCH] YOUTUBE_API_KEY is not configured on server.');
-    return {
-      status: 400,
-      data: {
-        success: false,
-        error: 'YOUTUBE_API_KEY is not configured on the server. Please configure YOUTUBE_API_KEY in server environment settings.',
-        quotaExceeded: false,
-        apiKeyMissing: true
-      }
-    };
-  }
 
-  // 1. YouTube Data API v3 Search Call (fetch at least top 5 results to ensure fallback candidates)
-  const searchLimit = Math.max(5, limit);
-  const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search');
-  searchUrl.searchParams.set('key', apiKey);
-  searchUrl.searchParams.set('q', cleanQuery);
-  searchUrl.searchParams.set('part', 'snippet');
-  searchUrl.searchParams.set('type', 'video');
-  searchUrl.searchParams.set('videoEmbeddable', 'true');
-  searchUrl.searchParams.set('regionCode', 'IN');
-  searchUrl.searchParams.set('relevanceLanguage', 'en');
-  searchUrl.searchParams.set('maxResults', searchLimit.toString());
+  // Tier 1: Try Official YouTube Data API v3 if key exists
+  if (apiKey) {
+    try {
+      const searchLimit = Math.max(5, limit);
+      const searchUrl = new URL('https://www.googleapis.com/youtube/v3/search');
+      searchUrl.searchParams.set('key', apiKey);
+      searchUrl.searchParams.set('q', cleanQuery);
+      searchUrl.searchParams.set('part', 'snippet');
+      searchUrl.searchParams.set('type', 'video');
+      searchUrl.searchParams.set('videoEmbeddable', 'true');
+      searchUrl.searchParams.set('regionCode', 'IN');
+      searchUrl.searchParams.set('relevanceLanguage', 'en');
+      searchUrl.searchParams.set('maxResults', searchLimit.toString());
 
-  const searchRes = await fetch(searchUrl.toString());
+      const searchRes = await fetch(searchUrl.toString());
 
-  if (!searchRes.ok) {
-    console.error('[YOUTUBE SEARCH] Search API Status:', searchRes.status);
-    const isQuota = searchRes.status === 403;
-    return {
-      status: searchRes.status,
-      data: {
-        success: false,
-        error: isQuota
-          ? 'THE ARCHIVE HAS REACHED ITS DAILY LIMIT.'
-          : searchRes.status === 404
-          ? 'Nothing found in the archive.'
-          : 'The archive is temporarily offline.',
-        quotaExceeded: isQuota
-      }
-    };
-  }
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.items && Array.isArray(searchData.items) && searchData.items.length > 0) {
+          const candidateVideoIds: string[] = searchData.items
+            .map((item: any) => item.id?.videoId)
+            .filter((vid: string | undefined): vid is string => Boolean(vid) && /^[a-zA-Z0-9_-]{11}$/.test(vid));
 
-  const searchData = await searchRes.json();
-  if (!searchData.items || !Array.isArray(searchData.items) || searchData.items.length === 0) {
-    return { status: 200, data: { success: true, results: [] } };
-  }
+          if (candidateVideoIds.length > 0) {
+            let videoDetailsMap: Record<
+              string,
+              { embeddable: boolean; durationSeconds: number; duration: string; year: number }
+            > = {};
 
-  const candidateVideoIds: string[] = searchData.items
-    .map((item: any) => item.id?.videoId)
-    .filter((vid: string | undefined): vid is string => Boolean(vid) && /^[a-zA-Z0-9_-]{11}$/.test(vid));
+            try {
+              const vUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
+              vUrl.searchParams.set('key', apiKey);
+              vUrl.searchParams.set('part', 'snippet,status,contentDetails');
+              vUrl.searchParams.set('id', candidateVideoIds.join(','));
 
-  if (candidateVideoIds.length === 0) {
-    return { status: 200, data: { success: true, results: [] } };
-  }
+              const vRes = await fetch(vUrl.toString());
+              if (vRes.ok) {
+                const vData = await vRes.json();
+                if (vData.items && Array.isArray(vData.items)) {
+                  vData.items.forEach((item: any) => {
+                    const isEmbeddable =
+                      item.status?.embeddable === true && item.status?.privacyStatus === 'public';
+                    const durationSec = parseISO8601Duration(item.contentDetails?.duration || 'PT3M45S');
+                    const mins = Math.floor(durationSec / 60);
+                    const secs = durationSec % 60;
+                    const durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+                    const pubDate = item.snippet?.publishedAt ? new Date(item.snippet.publishedAt) : new Date();
+                    const year = isNaN(pubDate.getFullYear()) ? 2024 : pubDate.getFullYear();
 
-  // 2. Video validation and status check via videos.list (part=snippet,status,contentDetails)
-  let videoDetailsMap: Record<
-    string,
-    { embeddable: boolean; durationSeconds: number; duration: string; year: number }
-  > = {};
+                    videoDetailsMap[item.id] = {
+                      embeddable: isEmbeddable,
+                      durationSeconds: durationSec,
+                      duration: durationStr,
+                      year
+                    };
+                  });
+                }
+              }
+            } catch (detailErr) {
+              console.warn('[YOUTUBE SEARCH] Error fetching videos.list details:', detailErr);
+            }
 
-  try {
-    const vUrl = new URL('https://www.googleapis.com/youtube/v3/videos');
-    vUrl.searchParams.set('key', apiKey);
-    vUrl.searchParams.set('part', 'snippet,status,contentDetails');
-    vUrl.searchParams.set('id', candidateVideoIds.join(','));
+            const results = searchData.items
+              .map((item: any) => {
+                const videoId = item.id?.videoId;
+                if (!videoId) return null;
 
-    const vRes = await fetch(vUrl.toString());
-    if (vRes.ok) {
-      const vData = await vRes.json();
-      if (vData.items && Array.isArray(vData.items)) {
-        vData.items.forEach((item: any) => {
-          const isEmbeddable =
-            item.status?.embeddable === true && item.status?.privacyStatus === 'public';
-          const durationSec = parseISO8601Duration(item.contentDetails?.duration || 'PT3M45S');
-          const mins = Math.floor(durationSec / 60);
-          const secs = durationSec % 60;
-          const durationStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-          const pubDate = item.snippet?.publishedAt ? new Date(item.snippet.publishedAt) : new Date();
-          const year = isNaN(pubDate.getFullYear()) ? 2024 : pubDate.getFullYear();
+                const snippet = item.snippet || {};
+                const title = snippet.title || 'Unknown Track';
+                const channelTitle = snippet.channelTitle || 'YouTube Music';
+                const details = videoDetailsMap[videoId] || {
+                  embeddable: true,
+                  durationSeconds: 225,
+                  duration: '03:45',
+                  year: 2024
+                };
 
-          videoDetailsMap[item.id] = {
-            embeddable: isEmbeddable,
-            durationSeconds: durationSec,
-            duration: durationStr,
-            year
-          };
-        });
-      }
-    }
-  } catch (detailErr) {
-    console.warn('[YOUTUBE SEARCH] Error fetching videos.list details:', detailErr);
-  }
+                if (!details.embeddable) return null;
 
-  // 3. Robust Fallback Iteration through top 5 search candidates
-  let primaryVideoFound: any = null;
-  let fallbackUsed = false;
-  const topCandidatesToCheck = candidateVideoIds.slice(0, 5);
+                const thumbnailUrl =
+                  snippet.thumbnails?.high?.url ||
+                  snippet.thumbnails?.medium?.url ||
+                  snippet.thumbnails?.default?.url ||
+                  `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-  for (let i = 0; i < topCandidatesToCheck.length; i++) {
-    const vid = topCandidatesToCheck[i];
-    const details = videoDetailsMap[vid];
-    const isEmbeddable = details ? details.embeddable : true;
+                let score = 50;
+                const lowerTitle = title.toLowerCase();
+                const lowerChannel = channelTitle.toLowerCase();
+                const lowerQuery = cleanQuery.toLowerCase();
 
-    if (isEmbeddable) {
-      if (i > 0) {
-        console.log(`[YOUTUBE SEARCH] Primary search result was not embeddable. Fallback candidate #${i + 1} (${vid}) is verified playable!`);
-        fallbackUsed = true;
+                if (lowerTitle.includes(lowerQuery)) score += 40;
+                if (lowerTitle.startsWith(lowerQuery)) score += 20;
+
+                if (
+                  /official|vevo|t-series|tseries|sony music|zee music|yrf|saregama|tips|venus|eros now|speed records|white hill|times music|speed audio|arijit|shreya ghoshal|sonu nigam|kk|sunidhi|pritam|a\.r\. rahman|rahman|anirudh|topic/i.test(
+                    lowerChannel
+                  )
+                ) {
+                  score += 45;
+                }
+
+                if (/official video|music video/i.test(lowerTitle)) score += 30;
+                if (/official audio|full song|audio/i.test(lowerTitle)) score += 25;
+                if (/lyric video|lyrics/i.test(lowerTitle)) score += 15;
+
+                if (
+                  /cover|reaction|slowed|reverb|8d|remix|mashup|status|shorts|10 min|1 hour|loop|pitch|nightcore|karaoke|instrumental/i.test(
+                    lowerTitle
+                  ) &&
+                  !lowerQuery.includes('cover') &&
+                  !lowerQuery.includes('remix')
+                ) {
+                  score -= 50;
+                }
+
+                if (details.durationSeconds >= 90 && details.durationSeconds <= 480) {
+                  score += 15;
+                } else if (details.durationSeconds > 900 || details.durationSeconds < 60) {
+                  score -= 35;
+                }
+
+                return {
+                  id: `yt-${videoId}`,
+                  title,
+                  channelTitle,
+                  artist: channelTitle,
+                  thumbnailUrl,
+                  thumbnail: thumbnailUrl,
+                  videoId,
+                  externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
+                  provider: 'youtube',
+                  embeddable: true,
+                  duration: details.duration,
+                  durationSeconds: details.durationSeconds,
+                  year: details.year,
+                  publishedAt: snippet.publishedAt,
+                  score
+                };
+              })
+              .filter(Boolean) as any[];
+
+            results.sort((a, b) => b.score - a.score);
+
+            if (results.length > 0) {
+              serverSearchCache.set(cacheKey, {
+                timestamp: Date.now(),
+                results
+              });
+
+              return {
+                status: 200,
+                data: { success: true, results, primaryVideo: results[0], source: 'official_api' }
+              };
+            }
+          }
+        }
       } else {
-        console.log(`[YOUTUBE SEARCH] Primary search result (${vid}) verified as embeddable.`);
+        console.warn(`[YOUTUBE SEARCH] Official API status ${searchRes.status}. Engaging web scraper.`);
       }
-      break;
-    } else {
-      console.warn(`[YOUTUBE SEARCH] Candidate #${i + 1} (${vid}) is NOT embeddable. Checking next fallback result...`);
+    } catch (apiErr) {
+      console.warn('[YOUTUBE SEARCH] Official API exception. Engaging web scraper:', apiErr);
     }
+  } else {
+    console.log('[YOUTUBE SEARCH] YOUTUBE_API_KEY not configured. Using resilient Web Search Scraper.');
   }
 
-  // 4. Normalization and Ranking for all candidate items
-  const results = searchData.items
-    .map((item: any) => {
-      const videoId = item.id?.videoId;
-      if (!videoId) return null;
+  // Tier 2: Web Search Scraper (Extracts live search results from YouTube HTML)
+  const webResults = await scrapeYouTubeWebSearch(cleanQuery, limit);
+  if (webResults && webResults.length > 0) {
+    serverSearchCache.set(cacheKey, {
+      timestamp: Date.now(),
+      results: webResults
+    });
 
-      const snippet = item.snippet || {};
-      const title = snippet.title || 'Unknown Track';
-      const channelTitle = snippet.channelTitle || 'YouTube Music';
-      const details = videoDetailsMap[videoId] || {
-        embeddable: true,
-        durationSeconds: 225,
-        duration: '03:45',
-        year: 2024
-      };
-
-      if (!details.embeddable) return null;
-
-      const thumbnailUrl =
-        snippet.thumbnails?.high?.url ||
-        snippet.thumbnails?.medium?.url ||
-        snippet.thumbnails?.default?.url ||
-        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-
-      // Smart Ranking Score
-      let score = 50;
-      const lowerTitle = title.toLowerCase();
-      const lowerChannel = channelTitle.toLowerCase();
-      const lowerQuery = cleanQuery.toLowerCase();
-
-      if (lowerTitle.includes(lowerQuery)) score += 40;
-      if (lowerTitle.startsWith(lowerQuery)) score += 20;
-
-      if (
-        /official|vevo|t-series|tseries|sony music|zee music|yrf|saregama|tips|venus|eros now|speed records|white hill|times music|speed audio|arijit|shreya ghoshal|sonu nigam|kk|sunidhi|pritam|a\.r\. rahman|rahman|anirudh|topic/i.test(
-          lowerChannel
-        )
-      ) {
-        score += 45;
+    return {
+      status: 200,
+      data: {
+        success: true,
+        results: webResults,
+        primaryVideo: webResults[0],
+        source: 'web_scraper'
       }
+    };
+  }
 
-      if (/official video|music video/i.test(lowerTitle)) score += 30;
-      if (/official audio|full song|audio/i.test(lowerTitle)) score += 25;
-      if (/lyric video|lyrics/i.test(lowerTitle)) score += 15;
+  // Tier 3: Public Piped Search API Fallback
+  const pipedResults = await fetchPipedSearchFallback(cleanQuery, limit);
+  if (pipedResults && pipedResults.length > 0) {
+    serverSearchCache.set(cacheKey, {
+      timestamp: Date.now(),
+      results: pipedResults
+    });
 
-      if (
-        /cover|reaction|slowed|reverb|8d|remix|mashup|status|shorts|10 min|1 hour|loop|pitch|nightcore|karaoke|instrumental/i.test(
-          lowerTitle
-        ) &&
-        !lowerQuery.includes('cover') &&
-        !lowerQuery.includes('remix')
-      ) {
-        score -= 50;
+    return {
+      status: 200,
+      data: {
+        success: true,
+        results: pipedResults,
+        primaryVideo: pipedResults[0],
+        source: 'piped_api'
       }
+    };
+  }
 
-      if (details.durationSeconds >= 90 && details.durationSeconds <= 480) {
-        score += 15;
-      } else if (details.durationSeconds > 900 || details.durationSeconds < 60) {
-        score -= 35;
-      }
-
-      return {
-        id: `yt-${videoId}`,
-        title,
-        channelTitle,
-        artist: channelTitle,
-        thumbnailUrl,
-        thumbnail: thumbnailUrl,
-        videoId,
-        externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
-        provider: 'youtube',
-        embeddable: true,
-        duration: details.duration,
-        durationSeconds: details.durationSeconds,
-        year: details.year,
-        publishedAt: snippet.publishedAt,
-        score
-      };
-    })
-    .filter(Boolean) as any[];
-
-  results.sort((a, b) => b.score - a.score);
-
-  primaryVideoFound = results[0] || null;
-
-  serverSearchCache.set(cacheKey, {
-    timestamp: Date.now(),
-    results
-  });
-
-  return { status: 200, data: { success: true, results, primaryVideo: primaryVideoFound, fallbackUsed } };
+  return { status: 200, data: { success: true, results: [] } };
 }
 
 // POST /api/youtube/search
