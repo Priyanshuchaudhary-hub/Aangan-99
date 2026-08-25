@@ -1333,9 +1333,30 @@ export function getTracksForMemory(memoryId: string): YouTubeSearchResultTrack[]
    For seamless compatibility with existing working YouTubeProvider
    ========================================================================= */
 export function convertSearchResultToNostalgiaTrack(
-  result: YouTubeSearchResultTrack
+  result: YouTubeSearchResultTrack,
+  allResults: YouTubeSearchResultTrack[] = []
 ): NostalgiaTrack {
   const vid = result.videoId.trim();
+  const alternatives = (allResults || [])
+    .filter((item) => item.videoId && item.videoId.trim() !== vid)
+    .map((item) => ({
+      id: item.id || `yt-${item.videoId.trim()}`,
+      title: item.title,
+      artist: item.artist || item.channelTitle || 'YouTube Music',
+      album: item.genre || 'YouTube Archive',
+      year: item.year || 2024,
+      duration: item.duration || '03:45',
+      durationSeconds: item.durationSeconds || 225,
+      artwork: item.thumbnail || `https://i.ytimg.com/vi/${item.videoId.trim()}/hqdefault.jpg`,
+      thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${item.videoId.trim()}/hqdefault.jpg`,
+      provider: 'youtube' as const,
+      providerTrackId: item.videoId.trim(),
+      videoId: item.videoId.trim(),
+      youtubeVideoId: item.videoId.trim(),
+      embeddable: true,
+      playable: true
+    }));
+
   return {
     id: result.id || `yt-${vid}`,
     title: result.title,
@@ -1361,6 +1382,7 @@ export function convertSearchResultToNostalgiaTrack(
     embeddable: true,
     playable: true,
     loadResult: 'PASS',
-    playbackResult: 'PASS'
+    playbackResult: 'PASS',
+    alternativeCandidates: alternatives as any
   };
 }

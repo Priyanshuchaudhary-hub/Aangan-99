@@ -58,6 +58,7 @@ export interface NostalgiaTrack {
   loadResult?: 'PASS' | 'FAIL' | 'PENDING' | string;
   playbackResult?: 'PASS' | 'FAIL' | 'PENDING' | string;
   verificationMessage?: string;
+  alternativeCandidates?: any[];
 }
 
 export type Track = NostalgiaTrack;

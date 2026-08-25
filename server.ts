@@ -201,9 +201,10 @@ app.get('/api/youtube/resolve', async (req, res) => {
     searchUrl.searchParams.set('part', 'snippet');
     searchUrl.searchParams.set('type', 'video');
     searchUrl.searchParams.set('videoEmbeddable', 'true');
+    searchUrl.searchParams.set('videoSyndicated', 'true');
     searchUrl.searchParams.set('regionCode', 'IN');
     searchUrl.searchParams.set('relevanceLanguage', 'en');
-    searchUrl.searchParams.set('maxResults', '10');
+    searchUrl.searchParams.set('maxResults', '12');
 
     const searchResponse = await fetch(searchUrl.toString());
     if (!searchResponse.ok) {
@@ -744,6 +745,7 @@ async function handleYouTubeSearch(
       searchUrl.searchParams.set('part', 'snippet');
       searchUrl.searchParams.set('type', 'video');
       searchUrl.searchParams.set('videoEmbeddable', 'true');
+      searchUrl.searchParams.set('videoSyndicated', 'true');
       searchUrl.searchParams.set('regionCode', 'IN');
       searchUrl.searchParams.set('relevanceLanguage', 'en');
       searchUrl.searchParams.set('maxResults', searchLimit.toString());
@@ -991,4 +993,9 @@ async function startServer() {
   });
 }
 
-startServer();
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;
+export { app };

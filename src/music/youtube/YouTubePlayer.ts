@@ -266,13 +266,6 @@ export class YouTubePlayer {
     const code = event.data;
     const videoId = this.currentVideoId || this.currentTrack?.youtubeVideoId || 'unknown';
 
-    console.warn('[YOUTUBE ENGINE onError]', {
-      videoId,
-      errorCode: code,
-      title: this.currentTrack?.title,
-      artist: this.currentTrack?.artist
-    });
-
     let mappedErrorType = 'UNKNOWN_ERROR';
     let userFriendlyMessage = 'Unable to play this video.';
 
@@ -287,6 +280,17 @@ export class YouTubePlayer {
       userFriendlyMessage = 'HTML5 PLAYER ERROR: The requested content cannot be played in HTML5 player.';
     }
 
+    const isDev = Boolean((import.meta as any).env?.DEV || (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'));
+    console.log('[YOUTUBE PLAYBACK DIAGNOSTIC]', {
+      environment: isDev ? 'development' : 'production',
+      searchedQuery: this.currentTrack?.title || 'Unknown',
+      selectedVideoId: videoId,
+      embeddableStatus: (this.currentTrack as any)?.embeddable ?? true,
+      playerState: typeof this.player?.getPlayerState === 'function' ? this.player.getPlayerState() : -1,
+      errorCode: code,
+      userFriendlyMessage
+    });
+
     // Invalidate cache and mark video failed in provider
     const provider = YouTubeProviderService.getInstance();
     if (this.currentTrack?.id) {
@@ -297,8 +301,46 @@ export class YouTubePlayer {
       this.currentTrackTriedVideoIds.add(videoId);
     }
 
-    // AUTOMATIC MULTI-CANDIDATE MIRROR & FALLBACK RECOVERY
+    // AUTOMATIC MULTI-CANDIDATE RECOVERY
     if (this.currentTrack) {
+      // 0. Check search result candidates attached to currentTrack
+      const searchCandidates = (this.currentTrack as any)?.alternativeCandidates || (this.currentTrack as any)?.alternativeTracks || [];
+      if (Array.isArray(searchCandidates) && searchCandidates.length > 0) {
+        for (const candidateItem of searchCandidates) {
+          const candVid = typeof candidateItem === 'string' ? candidateItem : candidateItem.videoId || candidateItem.youtubeVideoId;
+          if (candVid && isValidVideoId(candVid) && !this.currentTrackTriedVideoIds.has(candVid.trim())) {
+            const cleanCandId = candVid.trim();
+            console.log(`[YOUTUBE ENGINE] Auto-recovery: Trying next search result candidate ${cleanCandId} for "${this.currentTrack.title}"`);
+            this.currentTrackTriedVideoIds.add(cleanCandId);
+            this.currentVideoId = cleanCandId;
+
+            if (typeof candidateItem === 'object' && candidateItem) {
+              const art = candidateItem.artwork || candidateItem.thumbnailUrl || candidateItem.thumbnail || (this.currentTrack as any).artwork;
+              this.currentTrack = {
+                ...this.currentTrack,
+                ...candidateItem,
+                videoId: cleanCandId,
+                youtubeVideoId: cleanCandId,
+                providerTrackId: cleanCandId,
+                thumbnailUrl: art
+              };
+            } else {
+              const art = `https://i.ytimg.com/vi/${cleanCandId}/hqdefault.jpg`;
+              this.currentTrack = {
+                ...this.currentTrack,
+                videoId: cleanCandId,
+                youtubeVideoId: cleanCandId,
+                providerTrackId: cleanCandId,
+                thumbnailUrl: art
+              };
+            }
+            this.notifyListeners();
+            await this.safeLoadVideoById(cleanCandId, true);
+            return;
+          }
+        }
+      }
+
       const trackId = this.currentTrack.id;
       const titleLower = (this.currentTrack.title || '').toLowerCase();
       const titleMatchMirrors: string[] = [];

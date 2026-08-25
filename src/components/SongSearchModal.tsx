@@ -212,7 +212,7 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
 
   const handlePlayResult = async (track: YouTubeSearchResultTrack) => {
     audioSynthesizer.playClick('switch');
-    const nostalgiaTrack = convertSearchResultToNostalgiaTrack(track);
+    const nostalgiaTrack = convertSearchResultToNostalgiaTrack(track, results);
     await playTrack(nostalgiaTrack);
     showToast(`▶ Now Playing: "${track.title.slice(0, 24)}..."`);
     setIsFullPlayerOpen(true);
@@ -221,7 +221,7 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
 
   const handleAddToQueue = (track: YouTubeSearchResultTrack) => {
     audioSynthesizer.playClick('soft');
-    const nostalgiaTrack = convertSearchResultToNostalgiaTrack(track);
+    const nostalgiaTrack = convertSearchResultToNostalgiaTrack(track, results);
     addToQueue(nostalgiaTrack);
     showToast(`+ Added to Queue: "${track.title.slice(0, 24)}..."`);
   };
@@ -968,7 +968,7 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
                     {mix.tracks.length > 0 && (
                       <button
                         onClick={() => {
-                          const converted = mix.tracks.map(convertSearchResultToNostalgiaTrack);
+                          const converted = mix.tracks.map((t) => convertSearchResultToNostalgiaTrack(t, mix.tracks));
                           audioSynthesizer.playClick('switch');
                           playTrack(converted[0]);
                           setIsFullPlayerOpen(true);
