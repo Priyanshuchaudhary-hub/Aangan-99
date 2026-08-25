@@ -14,6 +14,33 @@ export function isValidVideoId(videoId?: string | null): boolean {
   return trimmed.length > 0 && /^[a-zA-Z0-9_-]{11}$/.test(trimmed);
 }
 
+const TRACK_MIRRORS: Record<string, string[]> = {
+  'tr-tum-hi-ho': ['Umqb9KENgmk', '2WZ_NhyyV5I', 'IJq0ywW430U'],
+  'tr-aankhon-mein-teri': ['b_sO-l_PZmg', 'fP7i2j0-B7E', 'y_O2dJv9E0o'],
+  'tr-aao-milo-chalo': ['N4oI2A4X7mQ', '9P_12vB_eN4', 'j6E19EwW_QY'],
+  'tr-khaabon-ke-parinday': ['cscdqZUdgCk', 'eW7kX_Z8f8U', '1a0kZ_2u3Q8'],
+  'tr-iktara': ['fv38u286a6A', 'fSS_R91Nimw', 'd1EaY91f1m0'],
+  'tr-kabira': ['jHNNMj5bNQw', 'ue_9G4_1g2M', '4wH4K3l8h0Q'],
+  'tr-saibo': ['s2k_s-39Jmg', 't8B038n1p2A', 'w1z76vP97dY'],
+  'tr-tum-se-hi': ['mt9g80_YmCg', 'Cb6wuzOurPc', '7j_oP56J0mE'],
+  'tr-tu-jaane-na': ['f3844W2g4S4', 'P8PWN1OmZOA', '9QZ43xVq7dY'],
+  'tr-dil-chahta-hai': ['fPq3bM9e4s8', 's5v3yV9kG9E', 'e2B3X6g91Y0'],
+  'tr-purani-jeans': ['4z9M6-66fGk', 's8W_c03q060', '1aO4-rSgLgE'],
+  'tr-tanha-dil': ['b1-7RkE_vA8', 'hB8K9eZ3QeM', 'Z1d86dM0X8A'],
+  'tr-dooba-dooba': ['S1eE2yvWz6U', 'd4P3yE0k98Q', 'a1E9q2W8y8A'],
+  'tr-yaaron': ['3M33q9y-n9k', 'e_3n2Q0M5dE', '4Yg4-r6H2yQ'],
+  'tr-shaktimaan': ['9K03O93i5N4', '7tH0X7b2A3Q', '2Qz5N3k1m6E'],
+  'tr-barsaat-banjaare': ['O0g_Q3nN35A', 'Umqb9KENgmk'],
+  'tr-mile-sur': ['G1G_U4o0w-E', 'rG6E3Q1w2mY', '1bH2c4P8u9Q'],
+  'tr-malgudi-theme': ['vGZ2y56R7fM', '2yW9n8g4M7E', 'f7c03m98Q2A'],
+  'tr-jungle-book': ['QY5cOslUaWk', '3mF0W6c9e8A', '1xK79M3f02E'],
+  'tr-dd-anthem': ['0kHqXq6B_j8', '8yH3Q01M9gA', 'd4v76M1g8eQ'],
+  'tr-vsnl-56k': ['gsNaR6FRuO0', 'vvr9AMWEU-c', 'iHW11f4LGtw'],
+  'tr-rain-tin-roof': ['2u_b2jJbV_E', 'e5_z6qY3M7A', '9f7h1e3M0sA'],
+  'tr-railway-chai': ['e6s7c7_U6mE', '1b0a8e3m7YQ', '8d3e2y0M5fA'],
+  'tr-gully-victory': ['9_aG1W6CqfM', '4e2M01w7q8A', '0f87e3y2n1Q']
+};
+
 export class YouTubePlayer {
   private static instance: YouTubePlayer | null = null;
 
@@ -36,6 +63,7 @@ export class YouTubePlayer {
   private pendingVideoIdToLoad: string | null = null;
   private pendingPlayOnReady = false;
   private isAutoFallbackAttempted = false;
+  private currentTrackTriedVideoIds: Set<string> = new Set();
 
   private constructor() {
     // Singleton
@@ -252,16 +280,83 @@ export class YouTubePlayer {
       userFriendlyMessage = 'HTML5 PLAYER ERROR: The requested content cannot be played in HTML5 player.';
     }
 
-    // Invalidate cache for this video
+    // Invalidate cache and mark video failed in provider
     const provider = YouTubeProviderService.getInstance();
     if (this.currentTrack?.id) {
       provider.invalidateCache(this.currentTrack.id);
     }
     if (videoId && videoId !== 'unknown') {
-      provider.invalidateCache(videoId);
+      provider.markVideoFailed(videoId);
+      this.currentTrackTriedVideoIds.add(videoId);
     }
 
-    // Do NOT replace with Tum Hi Ho! Display clear error so user can retry or click next.
+    // AUTOMATIC MULTI-CANDIDATE MIRROR & FALLBACK RECOVERY
+    if (this.currentTrack) {
+      const trackId = this.currentTrack.id;
+      const mirrors = TRACK_MIRRORS[trackId] || [];
+      const alternativeVideoId = mirrors.find(
+        (m) => !this.currentTrackTriedVideoIds.has(m) && isValidVideoId(m)
+      );
+
+      if (alternativeVideoId && this.player && typeof this.player.loadVideoById === 'function') {
+        console.log(
+          `[YOUTUBE ENGINE] Auto-recovery: Switched to verified mirror ${alternativeVideoId} for "${this.currentTrack.title}"`
+        );
+        this.currentTrackTriedVideoIds.add(alternativeVideoId);
+        this.currentVideoId = alternativeVideoId;
+        this.currentTrack = {
+          ...this.currentTrack,
+          videoId: alternativeVideoId,
+          youtubeVideoId: alternativeVideoId,
+          providerTrackId: alternativeVideoId
+        };
+        this.updateState('loading');
+        this.player.loadVideoById(alternativeVideoId);
+        return;
+      }
+
+      // 2. Query server-side search for dynamic embeddable alternative
+      try {
+        console.log(`[YOUTUBE ENGINE] Querying server-side fallback for "${this.currentTrack.title}"...`);
+        const query = `${this.currentTrack.title} ${this.currentTrack.artist} song`;
+        const res = await fetch('/api/youtube/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, maxResults: 5 })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.results) && data.results.length > 0) {
+            const candidate = data.results.find(
+              (item: any) =>
+                item.videoId &&
+                !this.currentTrackTriedVideoIds.has(item.videoId) &&
+                item.embeddable !== false
+            );
+            if (candidate && candidate.videoId && this.player && typeof this.player.loadVideoById === 'function') {
+              console.log(
+                `[YOUTUBE ENGINE] Auto-recovery: Resolved dynamic alternative ${candidate.videoId} for "${this.currentTrack.title}"`
+              );
+              this.currentTrackTriedVideoIds.add(candidate.videoId);
+              this.currentVideoId = candidate.videoId;
+              this.currentTrack = {
+                ...this.currentTrack,
+                videoId: candidate.videoId,
+                youtubeVideoId: candidate.videoId,
+                providerTrackId: candidate.videoId
+              };
+              this.updateState('loading');
+              this.player.loadVideoById(candidate.videoId);
+              return;
+            }
+          }
+        }
+      } catch (recoveryErr) {
+        console.warn('[YOUTUBE ENGINE] Dynamic auto-recovery error:', recoveryErr);
+      }
+    }
+
+    // If auto-recovery failed or all candidates exhausted, update state to unavailable
     this.updateState('unavailable', userFriendlyMessage, code, mappedErrorType);
   }
 
@@ -380,6 +475,7 @@ export class YouTubePlayer {
     this.duration = track.durationSeconds || 180;
     this.lastError = null;
     this.isAutoFallbackAttempted = false;
+    this.currentTrackTriedVideoIds = new Set([videoId]);
 
     // Required developer verification logs
     console.log('[RADIO] Selected track:', track.title);

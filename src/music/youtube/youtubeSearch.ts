@@ -561,6 +561,56 @@ const ALL_VERIFIED_TRACKS: YouTubeSearchResultTrack[] = Array.from(
   ).values()
 );
 
+export interface SearchDebugInfo {
+  query: string;
+  resultsCount: number;
+  firstVideoId: string;
+  apiStatus: string;
+  embeddable: boolean;
+  timestamp: number;
+  cached: boolean;
+  error?: string;
+}
+
+let latestSearchDebugInfo: SearchDebugInfo = {
+  query: '',
+  resultsCount: 0,
+  firstVideoId: '',
+  apiStatus: 'IDLE',
+  embeddable: false,
+  timestamp: Date.now(),
+  cached: false
+};
+
+const debugListeners: Set<(info: SearchDebugInfo) => void> = new Set();
+
+export function getLatestSearchDebugInfo(): SearchDebugInfo {
+  return latestSearchDebugInfo;
+}
+
+export function subscribeSearchDebugInfo(callback: (info: SearchDebugInfo) => void): () => void {
+  debugListeners.add(callback);
+  callback(latestSearchDebugInfo);
+  return () => {
+    debugListeners.delete(callback);
+  };
+}
+
+function updateSearchDebugInfo(info: Partial<SearchDebugInfo>) {
+  latestSearchDebugInfo = {
+    ...latestSearchDebugInfo,
+    ...info,
+    timestamp: Date.now()
+  };
+  debugListeners.forEach((cb) => {
+    try {
+      cb(latestSearchDebugInfo);
+    } catch (e) {
+      console.warn('Error in search debug listener:', e);
+    }
+  });
+}
+
 /* =========================================================================
    SEARCH YOUTUBE MUSIC MAIN FUNCTION
    ========================================================================= */
@@ -574,6 +624,13 @@ export async function searchYouTubeMusic(
   const maxResults = options.maxResults || 20;
 
   if (!cleanQuery) {
+    updateSearchDebugInfo({
+      query: '',
+      resultsCount: 0,
+      firstVideoId: '',
+      apiStatus: 'IDLE',
+      embeddable: false
+    });
     return {
       state: 'IDLE',
       results: [],
@@ -590,6 +647,14 @@ export async function searchYouTubeMusic(
   if (!options.forceRefresh && searchCache.has(cacheKey)) {
     const entry = searchCache.get(cacheKey)!;
     if (Date.now() - entry.timestamp < CACHE_TTL_MS) {
+      updateSearchDebugInfo({
+        query: cleanQuery,
+        resultsCount: entry.results.length,
+        firstVideoId: entry.results[0]?.videoId || '',
+        apiStatus: '200 OK (Cache)',
+        embeddable: entry.results[0]?.embeddable ?? true,
+        cached: true
+      });
       return {
         state: entry.results.length > 0 ? 'RESULTS' : 'NO_RESULTS',
         results: entry.results,
@@ -613,9 +678,30 @@ export async function searchYouTubeMusic(
     effectiveQuery = `${cleanQuery} song official`;
   }
 
+  updateSearchDebugInfo({
+    query: cleanQuery,
+    apiStatus: 'SEARCHING...',
+    cached: false
+  });
+
   try {
-    const url = `/api/youtube/search?q=${encodeURIComponent(effectiveQuery)}&maxResults=${maxResults}`;
-    const res = await fetch(url);
+    // Attempt POST /api/youtube/search first
+    let res = await fetch('/api/youtube/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query: effectiveQuery,
+        maxResults
+      })
+    });
+
+    // Fallback to GET if POST failed with 404 or 405
+    if (!res.ok && (res.status === 404 || res.status === 405)) {
+      const getUrl = `/api/youtube/search?q=${encodeURIComponent(effectiveQuery)}&maxResults=${maxResults}`;
+      res = await fetch(getUrl);
+    }
 
     if (res.ok) {
       const data = await res.json();
@@ -625,9 +711,9 @@ export async function searchYouTubeMusic(
           id: `yt-res-${item.videoId}`,
           videoId: item.videoId,
           title: item.title,
-          artist: item.channelTitle || 'YouTube Music',
+          artist: item.artist || item.channelTitle || 'YouTube Music',
           channelTitle: item.channelTitle || '',
-          thumbnail: item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+          thumbnail: item.thumbnailUrl || item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
           duration: item.duration || '03:45',
           durationSeconds: item.durationSeconds || 225,
           year: item.year || 2024,
@@ -645,6 +731,15 @@ export async function searchYouTubeMusic(
           results: filtered
         });
 
+        updateSearchDebugInfo({
+          query: cleanQuery,
+          resultsCount: filtered.length,
+          firstVideoId: filtered[0]?.videoId || '',
+          apiStatus: '200 OK (Live API)',
+          embeddable: filtered[0]?.embeddable ?? true,
+          cached: false
+        });
+
         return {
           state: filtered.length > 0 ? 'RESULTS' : 'NO_RESULTS',
           results: filtered,
@@ -654,6 +749,14 @@ export async function searchYouTubeMusic(
       } else if (data.quotaExceeded) {
         // Handle Quota exceeded with rich fallback
         const fallbackResults = matchLocalVerifiedCatalog(cleanQuery, mode, isNostalgia);
+        updateSearchDebugInfo({
+          query: cleanQuery,
+          resultsCount: fallbackResults.length,
+          firstVideoId: fallbackResults[0]?.videoId || '',
+          apiStatus: '403 QUOTA EXCEEDED (Archive Fallback)',
+          embeddable: true,
+          error: 'THE ARCHIVE HAS REACHED ITS DAILY LIMIT.'
+        });
         return {
           state: fallbackResults.length > 0 ? 'RESULTS' : 'QUOTA_EXCEEDED',
           results: fallbackResults,
@@ -664,6 +767,14 @@ export async function searchYouTubeMusic(
       }
     } else if (res.status === 403) {
       const fallbackResults = matchLocalVerifiedCatalog(cleanQuery, mode, isNostalgia);
+      updateSearchDebugInfo({
+        query: cleanQuery,
+        resultsCount: fallbackResults.length,
+        firstVideoId: fallbackResults[0]?.videoId || '',
+        apiStatus: '403 QUOTA EXCEEDED (Archive Fallback)',
+        embeddable: true,
+        error: 'THE ARCHIVE HAS REACHED ITS DAILY LIMIT.'
+      });
       return {
         state: fallbackResults.length > 0 ? 'RESULTS' : 'QUOTA_EXCEEDED',
         results: fallbackResults,
@@ -671,9 +782,20 @@ export async function searchYouTubeMusic(
         query: cleanQuery,
         mode
       };
+    } else {
+      updateSearchDebugInfo({
+        query: cleanQuery,
+        apiStatus: `HTTP ${res.status} (Archive Offline)`,
+        embeddable: false
+      });
     }
   } catch (err) {
     console.warn('[YOUTUBE SEARCH CLIENT] Network or server error, checking verified archive cache:', err);
+    updateSearchDebugInfo({
+      query: cleanQuery,
+      apiStatus: 'NETWORK/SERVER ERROR (Archive Fallback)',
+      embeddable: false
+    });
   }
 
   // Offline / Fallback Matcher for full offline reliability
@@ -683,6 +805,13 @@ export async function searchYouTubeMusic(
       timestamp: Date.now(),
       results: fallback
     });
+    updateSearchDebugInfo({
+      query: cleanQuery,
+      resultsCount: fallback.length,
+      firstVideoId: fallback[0]?.videoId || '',
+      apiStatus: 'VERIFIED ARCHIVE CACHE',
+      embeddable: true
+    });
     return {
       state: 'RESULTS',
       results: fallback,
@@ -690,6 +819,14 @@ export async function searchYouTubeMusic(
       mode
     };
   }
+
+  updateSearchDebugInfo({
+    query: cleanQuery,
+    resultsCount: 0,
+    firstVideoId: '',
+    apiStatus: 'NO RESULTS',
+    embeddable: false
+  });
 
   return {
     state: 'NO_RESULTS',

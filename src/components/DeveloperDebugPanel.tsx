@@ -26,7 +26,8 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Sparkles
+  Sparkles,
+  Search
 } from 'lucide-react';
 import { useMusic } from '../context/MusicContext.tsx';
 import { MUSIC_PROVIDERS_CONFIG } from '../music/config.ts';
@@ -35,7 +36,13 @@ import { NOSTALGIA_TRACKS } from '../data/musicData.ts';
 import { YouTubeTestPlayer } from './YouTubeTestPlayer.tsx';
 import { VerifyPlaylistModal } from './VerifyPlaylistModal.tsx';
 import { runMusicEngineTests, TestResultItem, TestSuiteSummary } from '../music/tests/musicEngineTests.ts';
-import { convertSearchResultToNostalgiaTrack, VERIFIED_DISCOVERY_CATALOG } from '../music/youtube/youtubeSearch.ts';
+import {
+  convertSearchResultToNostalgiaTrack,
+  VERIFIED_DISCOVERY_CATALOG,
+  getLatestSearchDebugInfo,
+  subscribeSearchDebugInfo,
+  SearchDebugInfo
+} from '../music/youtube/youtubeSearch.ts';
 
 export const DeveloperDebugPanel: React.FC = () => {
   const [showIsolatedTest, setShowIsolatedTest] = useState<boolean>(false);
@@ -44,6 +51,7 @@ export const DeveloperDebugPanel: React.FC = () => {
   const [isRunningTests, setIsRunningTests] = useState<boolean>(false);
   const [testResults, setTestResults] = useState<TestResultItem[]>([]);
   const [testSummary, setTestSummary] = useState<TestSuiteSummary | null>(null);
+  const [searchDebug, setSearchDebug] = useState<SearchDebugInfo>(getLatestSearchDebugInfo());
 
   const {
     playbackState,
@@ -84,6 +92,13 @@ export const DeveloperDebugPanel: React.FC = () => {
     }, 400);
     return () => clearInterval(interval);
   }, [isDebugPanelOpen]);
+
+  // Subscribe to search telemetry
+  useEffect(() => {
+    return subscribeSearchDebugInfo((info) => {
+      setSearchDebug(info);
+    });
+  }, []);
 
   if (!isDebugPanelOpen) return null;
 
@@ -231,6 +246,59 @@ export const DeveloperDebugPanel: React.FC = () => {
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase">ACTIVE PLAYER VIDEO ID</span>
                   <span className="font-bold text-emerald-400 font-mono break-all">{playerVideoId || 'NONE'}</span>
+                </div>
+              </div>
+
+              {/* SEARCH DEBUG TELEMETRY CARD */}
+              <div className="bg-[#141722] p-2.5 rounded border border-[#232838] space-y-1.5 font-mono text-[11px]">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-1">
+                  <div className="flex items-center gap-1.5 text-[#f59e0b] font-bold">
+                    <Search className="w-3.5 h-3.5" />
+                    <span className="uppercase tracking-wider">SEARCH DEBUG</span>
+                  </div>
+                  <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded uppercase">
+                    {searchDebug.cached ? 'CACHED' : searchDebug.apiStatus}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[10px] pt-0.5">
+                  <div>
+                    <span className="text-slate-400 block">Query:</span>
+                    <span className="text-amber-200 font-bold break-all">{searchDebug.query || '(none)'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Results:</span>
+                    <span className="text-white font-bold">{searchDebug.resultsCount}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">First Video ID:</span>
+                    <span className="text-cyan-300 font-bold break-all">{searchDebug.firstVideoId || '(none)'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">API Status:</span>
+                    <span
+                      className={`font-bold ${
+                        searchDebug.apiStatus.includes('200')
+                          ? 'text-emerald-400'
+                          : searchDebug.apiStatus.includes('QUOTA')
+                          ? 'text-amber-400'
+                          : 'text-slate-300'
+                      }`}
+                    >
+                      {searchDebug.apiStatus}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">Embeddable:</span>
+                    <span className={`font-bold ${searchDebug.embeddable ? 'text-emerald-400' : 'text-slate-400'}`}>
+                      {searchDebug.embeddable ? 'YES' : 'NO'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block">ID Match:</span>
+                    <span className={`font-bold ${isIdMatch ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {isIdMatch ? 'PASS ✔' : 'FAIL ✖'}
+                    </span>
+                  </div>
                 </div>
               </div>
 

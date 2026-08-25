@@ -51,6 +51,16 @@ import {
   CustomUserMix
 } from '../music/youtube/youtubeSearch.ts';
 
+const PREDEFINED_CATEGORIES = [
+  { id: '90s-pop', label: '90s Pop', query: '90s Pop Songs Hits', icon: '📻' },
+  { id: 'bollywood-classics', label: 'Bollywood Classics', query: 'Classic Bollywood Golden Hits', icon: '🎬' },
+  { id: 'cartoons', label: 'Cartoons', query: 'Nostalgic Cartoon Title Tracks Hindi', icon: '📺' },
+  { id: 'indie', label: 'Indie', query: 'Indian Indie Underground Hits', icon: '🎸' },
+  { id: '2000s-romance', label: '2000s Romance', query: '2000s Romantic Hits Bollywood', icon: '💖' },
+  { id: 'punjabi-hits', label: 'Punjabi Hits', query: 'Nostalgic Punjabi Pop Hits', icon: '🥁' },
+  { id: 'lofi-chill', label: 'Lofi & Chill', query: 'Nostalgic Indian Lofi Chill', icon: '☕' }
+];
+
 const QUICK_SEARCH_EXAMPLES = [
   'Tum Hi Ho',
   'Arijit Singh',
@@ -342,6 +352,40 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
             </div>
           )}
 
+          {/* Pre-defined Discovery Category Buttons */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] font-mono text-[#8c7460] uppercase">
+              <span className="flex items-center gap-1 font-pixel text-[10px] text-[#f59e0b] tracking-wider">
+                <Compass className="w-3 h-3 text-amber-400" /> DISCOVER CATEGORIES
+              </span>
+              <span className="text-[10px] text-[#7d6451] hidden sm:inline">Click to load pre-set archive search</span>
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+              {PREDEFINED_CATEGORIES.map((cat) => {
+                const isSelected = query.toLowerCase() === cat.query.toLowerCase();
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => {
+                      audioSynthesizer.playClick('soft');
+                      setActiveTab('search');
+                      setQuery(cat.query);
+                      executeSearch(cat.query);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-1.5 flex-shrink-0 border shadow-sm ${
+                      isSelected
+                        ? 'bg-[#854d0e] text-[#fef08a] border-[#f59e0b] ring-1 ring-[#f59e0b]/50'
+                        : 'bg-[#24170f] text-[#d6c4b2] border-[#422c1d] hover:border-[#f59e0b] hover:text-[#fef3c7] hover:bg-[#332014]'
+                    }`}
+                  >
+                    <span className="text-sm">{cat.icon}</span>
+                    <span>{cat.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="relative flex items-center">
             <Search className="w-5 h-5 absolute left-3.5 text-[#f59e0b] pointer-events-none" />
             <input
@@ -571,6 +615,23 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
                     const isCurrent = currentTrack.youtubeId === track.videoId;
                     const isFav = favoriteTrackIds.includes(`yt-${track.videoId}`);
 
+                    // Format duration as MM:SS cleanly
+                    const formattedDuration = (() => {
+                      if (track.duration && /^\d+:\d+$/.test(track.duration.trim())) {
+                        const parts = track.duration.trim().split(':');
+                        if (parts.length === 2) {
+                          return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+                        }
+                        return track.duration.trim();
+                      }
+                      if (track.durationSeconds && track.durationSeconds > 0) {
+                        const m = Math.floor(track.durationSeconds / 60);
+                        const s = Math.floor(track.durationSeconds % 60);
+                        return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                      }
+                      return track.duration || '--:--';
+                    })();
+
                     return (
                       <div
                         key={track.videoId}
@@ -592,6 +653,10 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
                               <Youtube className="w-2.5 h-2.5" />
                               <span>YOUTUBE</span>
                             </div>
+                            <div className="absolute bottom-1 right-1 bg-black/85 text-[9px] font-mono text-[#fcd34d] px-1 py-0.5 rounded border border-yellow-800/60 flex items-center gap-0.5">
+                              <Clock className="w-2.5 h-2.5 text-amber-400" />
+                              <span>{formattedDuration}</span>
+                            </div>
                             {isCurrent && (
                               <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                                 <Disc className="w-5 h-5 text-[#fcd34d] animate-spin" />
@@ -599,31 +664,38 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
                             )}
                           </div>
 
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            {/* Title & Duration alongside */}
+                            <div className="flex items-start justify-between gap-1.5">
+                              <h4
+                                className="font-bold text-xs text-[#fef3c7] truncate group-hover:text-amber-300 transition-colors flex-1"
+                                dangerouslySetInnerHTML={{ __html: track.title }}
+                              />
+                              <span className="font-mono text-[10px] bg-[#3a2517] text-[#fcd34d] px-1.5 py-0.5 rounded border border-[#523826] flex items-center gap-1 flex-shrink-0 shadow-sm" title="Video Duration (MM:SS)">
+                                <Clock className="w-2.5 h-2.5 text-amber-400" />
+                                <span className="font-bold">{formattedDuration}</span>
+                              </span>
+                            </div>
+
+                            {/* Artist & Year */}
+                            <div className="flex items-center gap-1.5 text-[11px] text-[#a8937d]">
+                              <p className="truncate font-sans font-medium text-[#d4c3b3]">
+                                {track.artist || track.channelTitle}
+                              </p>
                               {track.year && (
-                                <span className="font-pixel text-[9px] bg-[#3a2517] text-[#fcd34d] px-1 rounded uppercase">
+                                <span className="font-pixel text-[9px] bg-[#3a2517] text-[#fcd34d] px-1 rounded uppercase flex-shrink-0">
                                   {track.year}
-                                </span>
-                              )}
-                              {track.duration && (
-                                <span className="font-mono text-[10px] text-[#8c7460] flex items-center gap-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
-                                  {track.duration}
                                 </span>
                               )}
                             </div>
 
-                            <h4
-                              className="font-bold text-xs text-[#fef3c7] truncate group-hover:text-amber-300 transition-colors"
-                              dangerouslySetInnerHTML={{ __html: track.title }}
-                            />
-                            <p className="text-[11px] text-[#a8937d] truncate font-sans">
-                              {track.artist || track.channelTitle}
-                            </p>
-                            <p className="text-[10px] text-[#6e5645] font-mono truncate">
-                              Channel: {track.channelTitle}
-                            </p>
+                            {/* Channel Name alongside */}
+                            {track.channelTitle && (
+                              <div className="flex items-center gap-1 text-[10px] text-[#8c7460] font-mono truncate">
+                                <span>Channel:</span>
+                                <span className="text-[#e2d5c8] font-medium truncate">{track.channelTitle}</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 

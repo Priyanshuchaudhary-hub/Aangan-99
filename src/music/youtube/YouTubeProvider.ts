@@ -12,6 +12,7 @@ export class YouTubeProviderService {
   private playerEngine: YouTubePlayer;
   private searchCache: Map<string, VerifiedTrack[]> = new Map();
   private resolvedCache: Map<string, VerifiedTrack> = new Map();
+  private failedVideoIds: Set<string> = new Set();
 
   private constructor() {
     this.playerEngine = YouTubePlayer.getInstance();
@@ -26,6 +27,18 @@ export class YouTubeProviderService {
 
   public getPlayer(): YouTubePlayer {
     return this.playerEngine;
+  }
+
+  public markVideoFailed(videoId: string): void {
+    if (!videoId) return;
+    const trimmed = videoId.trim();
+    console.warn(`[YOUTUBE RESOLVER] Marking videoId as unplayable/restricted: ${trimmed}`);
+    this.failedVideoIds.add(trimmed);
+    this.invalidateCache(trimmed);
+  }
+
+  public isVideoFailed(videoId: string): boolean {
+    return Boolean(videoId && this.failedVideoIds.has(videoId.trim()));
   }
 
   public invalidateCache(idOrKey: string): void {
@@ -62,7 +75,7 @@ export class YouTubeProviderService {
     const isValidId = (id?: string | null) => typeof id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(id.trim());
     const explicitVideoId = isValidId(rawExplicitId) ? rawExplicitId!.trim() : null;
 
-    if (explicitVideoId) {
+    if (explicitVideoId && !this.failedVideoIds.has(explicitVideoId)) {
       const directTrack: VerifiedTrack = {
         id: track.id,
         title: track.title,
