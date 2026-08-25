@@ -170,7 +170,7 @@ export class YouTubePlayer {
           events: {
             onReady: (event: any) => {
               this.isPlayerReady = true;
-              console.log('[YOUTUBE ENGINE] Official YT.Player ready.');
+              console.log('[YOUTUBE ENGINE] Official YT.Player ready event received.');
 
               if (this.player && typeof this.player.getIframe === 'function') {
                 const iframe = this.player.getIframe();
@@ -191,8 +191,15 @@ export class YouTubePlayer {
                 const track = this.pendingTrackToLoad;
                 const shouldPlay = this.pendingPlayOnReady;
                 this.pendingTrackToLoad = null;
+                this.pendingVideoIdToLoad = null;
                 this.pendingPlayOnReady = false;
                 this.loadTrack(track, shouldPlay);
+              } else if (this.pendingVideoIdToLoad) {
+                const videoId = this.pendingVideoIdToLoad;
+                const shouldPlay = this.pendingPlayOnReady;
+                this.pendingVideoIdToLoad = null;
+                this.pendingPlayOnReady = false;
+                this.safeLoadVideoById(videoId, shouldPlay);
               } else if (this.pendingPlayOnReady) {
                 this.pendingPlayOnReady = false;
                 this.playVideo();
@@ -293,12 +300,28 @@ export class YouTubePlayer {
     // AUTOMATIC MULTI-CANDIDATE MIRROR & FALLBACK RECOVERY
     if (this.currentTrack) {
       const trackId = this.currentTrack.id;
-      const mirrors = TRACK_MIRRORS[trackId] || [];
+      const titleLower = (this.currentTrack.title || '').toLowerCase();
+      const titleMatchMirrors: string[] = [];
+
+      if (titleLower.includes('tum hi ho')) titleMatchMirrors.push('2WZ_NhyyV5I', 'IJq0ywW430U');
+      if (titleLower.includes('aankhon mein teri')) titleMatchMirrors.push('b_sO-l_PZmg', 'fP7i2j0-B7E');
+      if (titleLower.includes('blue eyes')) titleMatchMirrors.push('Jg8Z1-6K-40', 'oQWJg-J1uD0');
+      if (titleLower.includes('iktara')) titleMatchMirrors.push('fv38u286a6A', 'fSS_R91Nimw');
+      if (titleLower.includes('kabira')) titleMatchMirrors.push('jHNNMj5bNQw', 'ue_9G4_1g2M');
+      if (titleLower.includes('dil chahta hai')) titleMatchMirrors.push('fPq3bM9e4s8', 's5v3yV9kG9E');
+      if (titleLower.includes('tu jaane na')) titleMatchMirrors.push('f3844W2g4S4', 'P8PWN1OmZOA');
+      if (titleLower.includes('tum se hi')) titleMatchMirrors.push('mt9g80_YmCg', 'Cb6wuzOurPc');
+
+      const mirrors = [
+        ...(TRACK_MIRRORS[trackId] || []),
+        ...titleMatchMirrors
+      ];
+
       const alternativeVideoId = mirrors.find(
         (m) => !this.currentTrackTriedVideoIds.has(m) && isValidVideoId(m)
       );
 
-      if (alternativeVideoId && this.player && typeof this.player.loadVideoById === 'function') {
+      if (alternativeVideoId) {
         console.log(
           `[YOUTUBE ENGINE] Auto-recovery: Switched to verified mirror ${alternativeVideoId} for "${this.currentTrack.title}"`
         );
@@ -310,49 +333,56 @@ export class YouTubePlayer {
           youtubeVideoId: alternativeVideoId,
           providerTrackId: alternativeVideoId
         };
-        this.updateState('loading');
-        this.player.loadVideoById(alternativeVideoId);
+        await this.safeLoadVideoById(alternativeVideoId, true);
         return;
       }
 
-      // 2. Query server-side search for dynamic embeddable alternative
-      try {
-        console.log(`[YOUTUBE ENGINE] Querying server-side fallback for "${this.currentTrack.title}"...`);
-        const query = `${this.currentTrack.title} ${this.currentTrack.artist} song`;
-        const res = await fetch('/api/youtube/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, maxResults: 5 })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && Array.isArray(data.results) && data.results.length > 0) {
-            const candidate = data.results.find(
-              (item: any) =>
-                item.videoId &&
-                !this.currentTrackTriedVideoIds.has(item.videoId) &&
-                item.embeddable !== false
-            );
-            if (candidate && candidate.videoId && this.player && typeof this.player.loadVideoById === 'function') {
-              console.log(
-                `[YOUTUBE ENGINE] Auto-recovery: Resolved dynamic alternative ${candidate.videoId} for "${this.currentTrack.title}"`
+      // 2. Query multi-tier fallback search for audio, lyrics, or cover alternative
+      const fallbackQueries = [
+        `${this.currentTrack.title} ${this.currentTrack.artist} audio`,
+        `${this.currentTrack.title} ${this.currentTrack.artist} lyrics`,
+        `${this.currentTrack.title} ${this.currentTrack.artist} cover`
+      ];
+
+      for (const query of fallbackQueries) {
+        try {
+          console.log(`[YOUTUBE ENGINE] Querying fallback search "${query}"...`);
+          const res = await fetch('/api/youtube/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query, maxResults: 6 })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && Array.isArray(data.results) && data.results.length > 0) {
+              const candidate = data.results.find(
+                (item: any) =>
+                  item.videoId &&
+                  isValidVideoId(item.videoId) &&
+                  !this.currentTrackTriedVideoIds.has(item.videoId) &&
+                  item.embeddable !== false
               );
-              this.currentTrackTriedVideoIds.add(candidate.videoId);
-              this.currentVideoId = candidate.videoId;
-              this.currentTrack = {
-                ...this.currentTrack,
-                videoId: candidate.videoId,
-                youtubeVideoId: candidate.videoId,
-                providerTrackId: candidate.videoId
-              };
-              this.updateState('loading');
-              this.player.loadVideoById(candidate.videoId);
-              return;
+              if (candidate && candidate.videoId) {
+                const candidateId = candidate.videoId.trim();
+                console.log(
+                  `[YOUTUBE ENGINE] Auto-recovery: Resolved dynamic alternative ${candidateId} for "${this.currentTrack.title}"`
+                );
+                this.currentTrackTriedVideoIds.add(candidateId);
+                this.currentVideoId = candidateId;
+                this.currentTrack = {
+                  ...this.currentTrack,
+                  videoId: candidateId,
+                  youtubeVideoId: candidateId,
+                  providerTrackId: candidateId
+                };
+                await this.safeLoadVideoById(candidateId, true);
+                return;
+              }
             }
           }
+        } catch (recoveryErr) {
+          console.warn(`[YOUTUBE ENGINE] Fallback search error for "${query}":`, recoveryErr);
         }
-      } catch (recoveryErr) {
-        console.warn('[YOUTUBE ENGINE] Dynamic auto-recovery error:', recoveryErr);
       }
     }
 
@@ -379,6 +409,76 @@ export class YouTubePlayer {
   }
 
   /**
+   * Safely loads a video ID using YouTube IFrame API player.loadVideoById / cueVideoById.
+   * Includes retry mechanism with exponential backoff if the load attempt occurs before
+   * the player instance or YouTube API is fully ready.
+   */
+  public async safeLoadVideoById(
+    videoId: string,
+    autoPlay = true,
+    retriesLeft = 15,
+    retryDelayMs = 250
+  ): Promise<boolean> {
+    if (!isValidVideoId(videoId)) {
+      console.error('[YOUTUBE ENGINE] Cannot load video: invalid videoId:', videoId);
+      this.updateState('unavailable', 'Invalid YouTube Video ID');
+      return false;
+    }
+
+    const cleanId = videoId.trim();
+    this.currentVideoId = cleanId;
+
+    // If player instance or API is not ready yet, store pending load and retry
+    if (!this.isPlayerReady || !this.player || typeof this.player.loadVideoById !== 'function') {
+      console.log(
+        `[YOUTUBE ENGINE] Player not ready for videoId "${cleanId}". Queuing load request & retrying... (${retriesLeft} retries remaining)`
+      );
+      this.pendingVideoIdToLoad = cleanId;
+      this.pendingPlayOnReady = autoPlay;
+
+      // Ensure API loading/mount was kicked off
+      this.initialize().catch((err) => {
+        console.warn('[YOUTUBE ENGINE] Initialization triggered in safeLoadVideoById warning:', err);
+      });
+
+      if (retriesLeft > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        return this.safeLoadVideoById(cleanId, autoPlay, retriesLeft - 1, Math.min(retryDelayMs * 1.25, 1000));
+      } else {
+        console.warn(`[YOUTUBE ENGINE] safeLoadVideoById timed out waiting for player ready for videoId: ${cleanId}`);
+        this.updateState('error', 'YouTube Player initialization timed out.');
+        return false;
+      }
+    }
+
+    // Player instance is ready - call loadVideoById / cueVideoById
+    this.updateState('loading');
+    try {
+      if (autoPlay) {
+        console.log(`[YOUTUBE ENGINE] Executing player.loadVideoById("${cleanId}")`);
+        this.player.loadVideoById(cleanId);
+      } else {
+        console.log(`[YOUTUBE ENGINE] Executing player.cueVideoById("${cleanId}")`);
+        this.player.cueVideoById(cleanId);
+        this.updateState('paused');
+      }
+      return true;
+    } catch (err: any) {
+      console.warn(
+        `[YOUTUBE ENGINE] Call to loadVideoById failed (${err?.message || err}). Retrying... (${retriesLeft} retries left)`
+      );
+      if (retriesLeft > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+        return this.safeLoadVideoById(cleanId, autoPlay, retriesLeft - 1, retryDelayMs);
+      } else {
+        console.error(`[YOUTUBE ENGINE] Retry attempts exhausted for loadVideoById("${cleanId}")`);
+        this.updateState('error', 'Failed to load video in YouTube Player.');
+        return false;
+      }
+    }
+  }
+
+  /**
    * Load video by raw YouTube video ID directly
    */
   public async loadVideo(videoId: string, autoPlay = true): Promise<void> {
@@ -388,18 +488,19 @@ export class YouTubePlayer {
       return;
     }
 
+    const cleanId = videoId.trim();
     const videoTrack: VerifiedTrack = {
-      id: `yt-${videoId}`,
+      id: `yt-${cleanId}`,
       title: this.currentTrack?.title || 'YouTube Audio',
       artist: this.currentTrack?.artist || 'YouTube Music',
       album: 'YouTube Archive',
       year: 2024,
       provider: 'youtube',
-      providerTrackId: videoId,
-      youtubeVideoId: videoId,
-      videoId: videoId,
-      externalUrl: `https://www.youtube.com/watch?v=${videoId}`,
-      thumbnailUrl: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      providerTrackId: cleanId,
+      youtubeVideoId: cleanId,
+      videoId: cleanId,
+      externalUrl: `https://www.youtube.com/watch?v=${cleanId}`,
+      thumbnailUrl: `https://i.ytimg.com/vi/${cleanId}/hqdefault.jpg`,
       verified: true,
       embeddable: true,
       sourceType: 'official',
@@ -414,10 +515,10 @@ export class YouTubePlayer {
   }
 
   /**
-   * Load video by YouTube video ID (alias)
+   * Load video by YouTube video ID (Public API with retry mechanism)
    */
-  public async loadVideoById(videoId: string): Promise<void> {
-    await this.loadVideo(videoId, true);
+  public async loadVideoById(videoId: string, autoPlay = true): Promise<void> {
+    await this.safeLoadVideoById(videoId, autoPlay);
   }
 
   /**
@@ -483,27 +584,7 @@ export class YouTubePlayer {
     console.log('[RADIO] Loading video:', videoId);
     console.log('[RADIO] Current player video:', this.currentVideoId);
 
-    if (!this.isPlayerReady || !this.player || typeof this.player.loadVideoById !== 'function') {
-      this.pendingTrackToLoad = this.currentTrack;
-      this.pendingVideoIdToLoad = videoId;
-      this.pendingPlayOnReady = autoPlay;
-      this.initialize();
-      return;
-    }
-
-    this.updateState('loading');
-
-    try {
-      if (autoPlay) {
-        this.player.loadVideoById(videoId);
-      } else {
-        this.player.cueVideoById(videoId);
-        this.updateState('paused');
-      }
-    } catch (err: any) {
-      console.error('[YOUTUBE ENGINE] Error loading video ID:', err);
-      this.updateState('error', 'Failed to load video ID in YouTube Player.');
-    }
+    await this.safeLoadVideoById(videoId, autoPlay);
   }
 
   /**
@@ -521,7 +602,7 @@ export class YouTubePlayer {
         const state = typeof this.player.getPlayerState === 'function' ? this.player.getPlayerState() : -1;
         // If unstarted (-1), cued (5), or ended (0), ensure loadVideoById is invoked for currentVideoId
         if (state === -1 || state === 5 || state === 0) {
-          this.player.loadVideoById(this.currentVideoId);
+          await this.safeLoadVideoById(this.currentVideoId, true);
         } else {
           this.player.playVideo();
         }

@@ -5,9 +5,23 @@
    and folder browsing with ZERO DOM unmounting.
    ========================================================================= */
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
+import { YouTubePlayer } from '../music/youtube/YouTubePlayer.ts';
 
 export const PersistentMediaLayer: React.FC = () => {
+  const initializedRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    console.log('[PERSISTENT YOUTUBE PLAYER] Mounting persistent layer and initializing YT player host...');
+    const player = YouTubePlayer.getInstance();
+    player.initialize('yt-official-iframe-host').catch((err) => {
+      console.warn('[PERSISTENT YOUTUBE PLAYER] Lifecycle initialization warning:', err);
+    });
+  }, []);
+
   return (
     <div
       id="persistent-media-layer"
@@ -21,5 +35,6 @@ export const PersistentMediaLayer: React.FC = () => {
 };
 
 export const PersistentYouTubePlayer = PersistentMediaLayer;
+
 
 

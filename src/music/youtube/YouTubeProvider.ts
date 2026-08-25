@@ -118,36 +118,87 @@ export class YouTubeProviderService {
         const data = await res.json();
         if (data.success && data.track && data.track.videoId && data.track.embeddable) {
           const item = data.track;
-          const verifiedTrack: VerifiedTrack = {
-            id: track.id,
-            title: item.title || track.title,
-            artist: item.channelTitle || track.artist,
-            album: 'YouTube Catalog',
-            year: 2024,
-            provider: 'youtube',
-            providerTrackId: item.videoId,
-            youtubeVideoId: item.videoId,
-            externalUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
-            thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
-            verified: true,
-            embeddable: true,
-            sourceType: 'official',
-            playlists: [],
-            memories: [],
-            moods: ['nostalgic'],
-            durationSeconds: item.durationSeconds || 225,
-            duration: `${Math.floor((item.durationSeconds || 225) / 60)
-              .toString()
-              .padStart(2, '0')}:${((item.durationSeconds || 225) % 60).toString().padStart(2, '0')}`
-          };
+          if (!this.failedVideoIds.has(item.videoId)) {
+            const verifiedTrack: VerifiedTrack = {
+              id: track.id,
+              title: item.title || track.title,
+              artist: item.channelTitle || track.artist,
+              album: 'YouTube Catalog',
+              year: 2024,
+              provider: 'youtube',
+              providerTrackId: item.videoId,
+              youtubeVideoId: item.videoId,
+              externalUrl: `https://www.youtube.com/watch?v=${item.videoId}`,
+              thumbnailUrl: item.thumbnail || `https://i.ytimg.com/vi/${item.videoId}/hqdefault.jpg`,
+              verified: true,
+              embeddable: true,
+              sourceType: 'official',
+              playlists: [],
+              memories: [],
+              moods: ['nostalgic'],
+              durationSeconds: item.durationSeconds || 225,
+              duration: `${Math.floor((item.durationSeconds || 225) / 60)
+                .toString()
+                .padStart(2, '0')}:${((item.durationSeconds || 225) % 60).toString().padStart(2, '0')}`
+            };
 
-          this.resolvedCache.set(cacheKey, verifiedTrack);
-          console.log(`[YOUTUBE RESOLVER] Verified embeddable video found: ${item.videoId} (${item.title})`);
-          return verifiedTrack;
+            this.resolvedCache.set(cacheKey, verifiedTrack);
+            console.log(`[YOUTUBE RESOLVER] Verified embeddable video found: ${item.videoId} (${item.title})`);
+            return verifiedTrack;
+          }
+        }
+      }
+
+      // Secondary multi-tier fallback search
+      console.log(`[YOUTUBE RESOLVER] Trying multi-tier search fallback for "${track.title}"...`);
+      const searchRes = await fetch('/api/youtube/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: `${track.title} ${track.artist} audio`, maxResults: 5 })
+      });
+
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.success && Array.isArray(searchData.results) && searchData.results.length > 0) {
+          const validCandidate = searchData.results.find(
+            (item: any) =>
+              item.videoId &&
+              typeof item.videoId === 'string' &&
+              /^[a-zA-Z0-9_-]{11}$/.test(item.videoId.trim()) &&
+              !this.failedVideoIds.has(item.videoId.trim())
+          );
+
+          if (validCandidate) {
+            const vid = validCandidate.videoId.trim();
+            const verifiedTrack: VerifiedTrack = {
+              id: track.id,
+              title: validCandidate.title || track.title,
+              artist: validCandidate.artist || validCandidate.channelTitle || track.artist,
+              album: 'YouTube Archive',
+              year: 2024,
+              provider: 'youtube',
+              providerTrackId: vid,
+              youtubeVideoId: vid,
+              externalUrl: `https://www.youtube.com/watch?v=${vid}`,
+              thumbnailUrl: validCandidate.thumbnail || `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+              verified: true,
+              embeddable: true,
+              sourceType: 'official',
+              playlists: [],
+              memories: [],
+              moods: ['nostalgic'],
+              durationSeconds: validCandidate.durationSeconds || 225,
+              duration: validCandidate.duration || '03:45'
+            };
+
+            this.resolvedCache.set(cacheKey, verifiedTrack);
+            console.log(`[YOUTUBE RESOLVER] Secondary multi-tier search resolved: ${vid}`);
+            return verifiedTrack;
+          }
         }
       }
     } catch (err) {
-      console.warn('[YOUTUBE RESOLVER] API search failed, checking explicit video ID:', err);
+      console.warn('[YOUTUBE RESOLVER] Multi-tier API search error:', err);
     }
 
     if (explicitVideoId) {

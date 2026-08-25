@@ -91,7 +91,8 @@ export const NostalgiaRadioModal: React.FC<NostalgiaRadioModalProps> = ({
     setIsSetupModalOpen,
     setIsDebugPanelOpen,
     testYouTubePlayback,
-    openSearchModal
+    openSearchModal,
+    switchProvider
   } = useMusic();
 
   const { visualUrl, status: visualStatus } = useTrackVisual(currentTrack);
@@ -335,8 +336,18 @@ export const NostalgiaRadioModal: React.FC<NostalgiaRadioModalProps> = ({
                     </p>
                     <div className="flex flex-wrap gap-2 pt-1">
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           audioSynthesizer.playClick('switch');
+                          await switchProvider('local-synth');
+                        }}
+                        className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded uppercase tracking-wide transition-colors"
+                      >
+                        [ RETRO SYNTH AUDIO ]
+                      </button>
+                      <button
+                        onClick={async () => {
+                          audioSynthesizer.playClick('switch');
+                          await switchProvider('youtube');
                           playTrack(currentTrack);
                         }}
                         className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded uppercase tracking-wide transition-colors"
