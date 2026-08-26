@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "1.0",
+  "collections": [
+    {
+      "name": "slambook_entries",
+      "description": "User shared 90s slam book nostalgia entries and messages",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      },
+      "sampleData": [
+        {
+          "id": "entry-1",
+          "name": "Priyanshu",
+          "nickname": "Chintu",
+          "favoriteSong": "Ek Dilruba",
+          "favouriteMemory": "Listening to 90s cassette tapes on Sunday mornings",
+          "createdAt": "2026-08-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "nostalgia_memories",
+      "description": "User shared 90s nostalgia memory cards and stories",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      },
+      "sampleData": [
+        {
+          "id": "memory-1",
+          "title": "Phantom Cigarettes & Natraj Pencils",
+          "category": "snacks_stationery",
+          "story": "Buying Phantom sugar cigarettes from the neighborhood kirana store for 1 rupee.",
+          "likesCount": 12,
+          "createdAt": "2026-08-25T12:00:00Z"
+        }
+      ]
+    },
+    {
+      "name": "favorite_tracks",
+      "description": "Saved favorite nostalgia tracks",
+      "rules": {
+        "read": "true",
+        "write": "true"
+      },
+      "sampleData": [
+        {
+          "id": "fav-1",
+          "title": "Ek Dilruba",
+          "artist": "Udit Narayan",
+          "videoId": "G5m4v644j1A",
+          "savedAt": "2026-08-25T12:00:00Z"
+        }
+      ]
+    }
+  ]
+}

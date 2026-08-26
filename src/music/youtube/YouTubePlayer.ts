@@ -149,7 +149,7 @@ export class YouTubePlayer {
       }
 
       try {
-        const originUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const originUrl = 'https://aangan-99.vercel.app';
         const rawInitialId = this.pendingTrackToLoad?.youtubeVideoId || this.currentTrack?.youtubeVideoId;
         const isValidId = typeof rawInitialId === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(rawInitialId);
         const initialVideoId = isValidId ? rawInitialId : 'Umqb9KENgmk';
@@ -471,7 +471,12 @@ export class YouTubePlayer {
     this.currentVideoId = cleanId;
 
     // If player instance or API is not ready yet, store pending load and retry
-    if (!this.isPlayerReady || !this.player || typeof this.player.loadVideoById !== 'function') {
+    const isFullyReady = this.isPlayerReady && 
+                         this.player && 
+                         typeof this.player.loadVideoById === 'function' &&
+                         typeof this.player.getPlayerState === 'function';
+
+    if (!isFullyReady) {
       console.log(
         `[YOUTUBE ENGINE] Player not ready for videoId "${cleanId}". Queuing load request & retrying... (${retriesLeft} retries remaining)`
       );
@@ -485,7 +490,7 @@ export class YouTubePlayer {
 
       if (retriesLeft > 0) {
         await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
-        return this.safeLoadVideoById(cleanId, autoPlay, retriesLeft - 1, Math.min(retryDelayMs * 1.25, 1000));
+        return this.safeLoadVideoById(cleanId, autoPlay, retriesLeft - 1, Math.min(retryDelayMs * 1.5, 2000));
       } else {
         console.warn(`[YOUTUBE ENGINE] safeLoadVideoById timed out waiting for player ready for videoId: ${cleanId}`);
         this.updateState('error', 'YouTube Player initialization timed out.');
@@ -496,6 +501,9 @@ export class YouTubePlayer {
     // Player instance is ready - call loadVideoById / cueVideoById
     this.updateState('loading');
     try {
+      this.pendingVideoIdToLoad = null;
+      this.pendingPlayOnReady = false;
+      
       if (autoPlay) {
         console.log(`[YOUTUBE ENGINE] Executing player.loadVideoById("${cleanId}")`);
         this.player.loadVideoById(cleanId);

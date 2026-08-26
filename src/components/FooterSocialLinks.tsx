@@ -16,8 +16,8 @@ export interface FooterSocialLinksProps {
 
 export const FooterSocialLinks: React.FC<FooterSocialLinksProps> = ({
   email = 'priyanshuchaudhary07it@gmail.com',
-  linkedInUrl = 'https://www.linkedin.com/in/priyanshubharangar',
-  instagramUrl = 'https://www.instagram.com/priyanshubharangar'
+  linkedInUrl = 'https://www.linkedin.com/in/priyanshu-bharangar?utm_source=share_via&utm_content=profile&utm_medium=member_android',
+  instagramUrl = 'https://www.instagram.com/chaudhary_priyanshuu?utm_source=qr&igsi=enptcGt4c3puY25k'
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
 

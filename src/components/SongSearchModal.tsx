@@ -52,6 +52,8 @@ import {
   VERIFIED_DISCOVERY_CATALOG,
   CustomUserMix
 } from '../music/youtube/youtubeSearch.ts';
+import { NOSTALGIA_TRACKS, NOSTALGIA_PLAYLISTS } from '../data/musicData.ts';
+import { MEMORY_EXPLORER_ITEMS } from '../data/memoryExplorerData.ts';
 
 const PREDEFINED_CATEGORIES = [
   { id: '90s-pop', label: '90s Pop', query: '90s Pop Songs Hits', icon: '📻' },
@@ -122,6 +124,39 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
   const [results, setResults] = useState<YouTubeSearchResultTrack[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  const [isInputFocused, setIsInputFocused] = useState<boolean>(false);
+
+  // Computed Autocomplete Suggestions grouped by type
+  const autocompleteSuggestions = React.useMemo(() => {
+    if (!query || query.trim().length < 1) return null;
+    const q = query.toLowerCase().trim();
+
+    const songs = NOSTALGIA_TRACKS.filter(
+      t => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q)
+    ).slice(0, 3);
+
+    const artistSet = new Set<string>();
+    NOSTALGIA_TRACKS.forEach(t => {
+      if (t.artist.toLowerCase().includes(q)) {
+        artistSet.add(t.artist);
+      }
+    });
+    const artists = Array.from(artistSet).slice(0, 2);
+
+    const memories = MEMORY_EXPLORER_ITEMS.filter(
+      m => m.title.toLowerCase().includes(q) || m.emotionalDescription.toLowerCase().includes(q)
+    ).slice(0, 2);
+
+    const playlists = NOSTALGIA_PLAYLISTS.filter(
+      p => p.title.toLowerCase().includes(q) || p.description.toLowerCase().includes(q)
+    ).slice(0, 2);
+
+    if (songs.length === 0 && artists.length === 0 && memories.length === 0 && playlists.length === 0) {
+      return null;
+    }
+
+    return { songs, artists, memories, playlists };
+  }, [query]);
 
   // Modals for adding to custom mix / saving to memory
   const [selectedTrackForMix, setSelectedTrackForMix] = useState<YouTubeSearchResultTrack | null>(null);
@@ -201,9 +236,11 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
       return;
     }
 
+    setSearchState('SEARCHING');
+
     const timer = setTimeout(() => {
       executeSearch(query, selectedMode);
-    }, 450);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [query, selectedMode, isNostalgiaMode]);
@@ -389,36 +426,152 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
             </div>
           </div>
 
-          <div className="relative flex items-center">
-            <Search className="w-5 h-5 absolute left-3.5 text-[#f59e0b] pointer-events-none" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  executeSearch(query);
-                }
-              }}
-              placeholder="Search songs, artists, memories... (e.g. Tum Hi Ho, Arijit Singh, Aankhon Mein Teri, 2000s Bollywood)"
-              className="w-full bg-[#0f0805] border-2 border-[#523826] focus:border-[#f59e0b] rounded-xl pl-11 pr-24 py-3 text-sm text-[#fef08a] placeholder-[#7d6451] outline-none shadow-inner transition-all font-mono"
-            />
-            {query && (
+          <div className="relative">
+            <div className="relative flex items-center">
+              <Search className="w-5 h-5 absolute left-3.5 text-[#f59e0b] pointer-events-none" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setIsInputFocused(true)}
+                onBlur={() => setTimeout(() => setIsInputFocused(false), 250)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    setIsInputFocused(false);
+                    executeSearch(query);
+                  }
+                }}
+                placeholder="Search songs, artists, memories... (e.g. Tum Hi Ho, Arijit Singh, Aankhon Mein Teri, 2000s Bollywood)"
+                className="w-full bg-[#0f0805] border-2 border-[#523826] focus:border-[#f59e0b] rounded-xl pl-11 pr-24 py-3 text-sm text-[#fef08a] placeholder-[#7d6451] outline-none shadow-inner transition-all font-mono"
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery('')}
+                  className="absolute right-20 text-[#8c7460] hover:text-[#fef3c7] p-1 rounded"
+                  title="Clear input"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
               <button
-                onClick={() => setQuery('')}
-                className="absolute right-20 text-[#8c7460] hover:text-[#fef3c7] p-1 rounded"
-                title="Clear input"
+                onClick={() => {
+                  setIsInputFocused(false);
+                  executeSearch(query);
+                }}
+                className="absolute right-2 px-3 py-1.5 bg-[#854d0e] hover:bg-[#a16207] text-[#fef08a] font-pixel text-xs rounded-lg uppercase transition-all shadow"
               >
-                <X className="w-4 h-4" />
+                SEARCH
               </button>
+            </div>
+
+            {/* Autocomplete Dropdown grouped by type */}
+            {isInputFocused && autocompleteSuggestions && (
+              <div className="absolute left-0 right-0 mt-1 bg-[#160b06] border border-[#523826] rounded-xl shadow-2xl z-50 overflow-hidden text-xs font-mono divide-y divide-[#312015] max-h-96 overflow-y-auto">
+                {autocompleteSuggestions.songs.length > 0 && (
+                  <div className="p-2">
+                    <div className="text-[10px] font-pixel text-[#8c7460] uppercase px-2 py-1 flex items-center gap-1.5">
+                      <Music className="w-3 h-3 text-[#f59e0b]" /> Songs ({autocompleteSuggestions.songs.length})
+                    </div>
+                    {autocompleteSuggestions.songs.map(track => (
+                      <div
+                        key={track.id}
+                        onClick={async () => {
+                          audioSynthesizer.playClick('switch');
+                          setIsInputFocused(false);
+                          await playTrack(track);
+                          setIsFullPlayerOpen(true);
+                          onClose();
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#28180e] cursor-pointer transition-colors group"
+                      >
+                        <img src={track.thumbnailUrl} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0 bg-[#25160d]" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[#fef3c7] font-bold truncate group-hover:text-[#f59e0b]">{track.title}</p>
+                          <p className="text-[#8c7460] truncate">{track.artist} · {track.year}</p>
+                        </div>
+                        <span className="text-[10px] bg-[#332014] text-[#fcd34d] px-1.5 py-0.5 rounded">PLAY</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {autocompleteSuggestions.artists.length > 0 && (
+                  <div className="p-2">
+                    <div className="text-[10px] font-pixel text-[#8c7460] uppercase px-2 py-1 flex items-center gap-1.5">
+                      <Sparkles className="w-3 h-3 text-[#f59e0b]" /> Artists ({autocompleteSuggestions.artists.length})
+                    </div>
+                    {autocompleteSuggestions.artists.map(artist => (
+                      <div
+                        key={artist}
+                        onClick={() => {
+                          audioSynthesizer.playClick('soft');
+                          setQuery(artist);
+                          setIsInputFocused(false);
+                          executeSearch(artist);
+                        }}
+                        className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-[#28180e] cursor-pointer transition-colors group"
+                      >
+                        <span className="text-[#fef3c7] font-bold group-hover:text-[#f59e0b]">{artist}</span>
+                        <span className="text-[10px] text-[#8c7460]">Artist Search</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {autocompleteSuggestions.memories.length > 0 && (
+                  <div className="p-2">
+                    <div className="text-[10px] font-pixel text-[#8c7460] uppercase px-2 py-1 flex items-center gap-1.5">
+                      <Compass className="w-3 h-3 text-amber-400" /> Memories ({autocompleteSuggestions.memories.length})
+                    </div>
+                    {autocompleteSuggestions.memories.map(mem => (
+                      <div
+                        key={mem.id}
+                        onClick={() => {
+                          audioSynthesizer.playClick('soft');
+                          setQuery(mem.title);
+                          setIsInputFocused(false);
+                          executeSearch(mem.title);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#28180e] cursor-pointer transition-colors group"
+                      >
+                        <img src={mem.visualImage} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0 bg-[#25160d]" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[#fef3c7] font-bold truncate group-hover:text-[#f59e0b]">{mem.title}</p>
+                          <p className="text-[#8c7460] truncate">{mem.year} · Memory</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {autocompleteSuggestions.playlists.length > 0 && (
+                  <div className="p-2">
+                    <div className="text-[10px] font-pixel text-[#8c7460] uppercase px-2 py-1 flex items-center gap-1.5">
+                      <ListMusic className="w-3 h-3 text-emerald-400" /> Playlists ({autocompleteSuggestions.playlists.length})
+                    </div>
+                    {autocompleteSuggestions.playlists.map(pl => (
+                      <div
+                        key={pl.id}
+                        onClick={() => {
+                          audioSynthesizer.playClick('soft');
+                          setQuery(pl.title);
+                          setIsInputFocused(false);
+                          executeSearch(pl.title);
+                        }}
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-[#28180e] cursor-pointer transition-colors group"
+                      >
+                        <img src={pl.coverImage} alt="" className="w-8 h-8 rounded object-cover flex-shrink-0 bg-[#25160d]" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[#fef3c7] font-bold truncate group-hover:text-[#f59e0b]">{pl.title}</p>
+                          <p className="text-[#8c7460] truncate">{pl.era} · Playlist</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
-            <button
-              onClick={() => executeSearch(query)}
-              className="absolute right-2 px-3 py-1.5 bg-[#854d0e] hover:bg-[#a16207] text-[#fef08a] font-pixel text-xs rounded-lg uppercase transition-all shadow"
-            >
-              SEARCH
-            </button>
           </div>
 
           {/* Quick Search Chips */}
@@ -519,12 +672,22 @@ export const SongSearchModal: React.FC<SongSearchModalProps> = ({
             <div className="space-y-4">
               {/* Status Banner */}
               {searchState === 'SEARCHING' && (
-                <div className="p-8 text-center bg-[#180e08] rounded-2xl border border-[#3b271a] flex flex-col items-center justify-center gap-3">
-                  <Loader2 className="w-8 h-8 text-[#f59e0b] animate-spin" />
-                  <p className="text-sm font-mono text-[#fef3c7] font-bold">Scanning the archive...</p>
-                  <p className="text-xs text-[#8c7460] font-mono">
-                    Querying YouTube Data API v3 & validating embeddable stream channels...
-                  </p>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 pb-2 border-b border-[#312015] font-mono text-xs text-[#8c7460]">
+                    <Loader2 className="w-4 h-4 text-[#f59e0b] animate-spin" />
+                    <span>Searching archive for "{query}"...</span>
+                  </div>
+                  {[1, 2, 3, 4].map((n) => (
+                    <div key={n} className="p-3.5 rounded-xl bg-[#180f0a] border border-[#362316] animate-pulse flex items-center gap-3">
+                      <div className="w-24 h-16 sm:w-28 sm:h-18 rounded-lg bg-[#2a1a10] flex-shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 bg-[#2a1a10] rounded w-3/4" />
+                        <div className="h-3 bg-[#2a1a10] rounded w-1/2" />
+                        <div className="h-3 bg-[#2a1a10] rounded w-1/4" />
+                      </div>
+                      <div className="w-9 h-9 rounded-full bg-[#2a1a10] flex-shrink-0" />
+                    </div>
+                  ))}
                 </div>
               )}
 

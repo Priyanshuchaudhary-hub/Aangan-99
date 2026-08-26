@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, X, Heart, Save, Share2, Check, RefreshCw, Feather, BookOpen, Volume2, Camera } from 'lucide-react';
+import { collection, onSnapshot, addDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase.ts';
 import { useSound } from '../hooks/useSound.ts';
 
 interface GeneratedCardData {
@@ -40,15 +42,34 @@ export const AIMemoryGeneratorModal: React.FC<AIMemoryGeneratorModalProps> = ({
   const [activeTab, setActiveTab] = useState<'create' | 'saved'>('create');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Load saved AI memories from localStorage
+  // Load saved AI memories from Firestore and localStorage
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('aangan_ai_saved_memories');
-      if (stored) {
-        setSavedCards(JSON.parse(stored));
-      }
+      const q = query(collection(db, 'nostalgia_memories'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const fetched: GeneratedCardData[] = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              poeticTitle: data.title || data.poeticTitle || 'Untitled Memory',
+              yearEraEstimate: data.yearEraEstimate || 'Circa 1999',
+              emotionalDescription: data.story || data.emotionalDescription || '',
+              sensoryDetails: data.sensoryDetails || [],
+              suggestedVisualMood: data.suggestedVisualMood || '',
+              suggestedAmbientSound: data.suggestedAmbientSound || '',
+              relatedMemories: data.relatedMemories || [],
+              userRawMemory: data.userRawMemory || '',
+              createdAt: data.createdAtStr || new Date().toLocaleDateString('en-IN')
+            };
+          });
+          setSavedCards(fetched);
+        }
+      }, (err) => {
+        console.warn('[FIRESTORE MEMORIES LISTEN WARN]', err);
+      });
+      return () => unsubscribe();
     } catch (err) {
-      console.error('Failed to load saved memories:', err);
+      console.warn('[FIRESTORE MEMORIES LOAD WARN]', err);
     }
   }, []);
 
@@ -97,18 +118,37 @@ export const AIMemoryGeneratorModal: React.FC<AIMemoryGeneratorModalProps> = ({
     }
   };
 
-  const handleSaveLocally = () => {
+  const handleSaveLocally = async () => {
     if (!generatedCard) return;
     playClick('switch');
 
+    const dateStr = new Date().toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+
     const cardWithTimestamp = {
       ...generatedCard,
-      createdAt: new Date().toLocaleDateString('en-IN', {
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric'
-      })
+      createdAt: dateStr
     };
+
+    try {
+      await addDoc(collection(db, 'nostalgia_memories'), {
+        title: generatedCard.poeticTitle,
+        yearEraEstimate: generatedCard.yearEraEstimate,
+        story: generatedCard.emotionalDescription,
+        sensoryDetails: generatedCard.sensoryDetails || [],
+        suggestedVisualMood: generatedCard.suggestedVisualMood || '',
+        suggestedAmbientSound: generatedCard.suggestedAmbientSound || '',
+        relatedMemories: generatedCard.relatedMemories || [],
+        userRawMemory: generatedCard.userRawMemory || '',
+        createdAtStr: dateStr,
+        createdAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.error('[FIRESTORE MEMORY SAVE ERROR]', e);
+    }
 
     const updated = [cardWithTimestamp, ...savedCards.filter((c) => c.poeticTitle !== generatedCard.poeticTitle)];
     setSavedCards(updated);

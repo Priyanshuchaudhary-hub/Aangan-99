@@ -1,4 +1,6 @@
-import React from 'react';
+const fs = require('fs');
+
+const content = `import React from 'react';
 import { Home } from './pages/Home.tsx';
 import { MusicProvider } from './context/MusicContext.tsx';
 import { PersistentMediaLayer } from './components/PersistentMediaLayer.tsx';
@@ -15,3 +17,5 @@ export default function App() {
     </MusicProvider>
   );
 }
+`
+fs.writeFileSync('src/App.tsx', content);

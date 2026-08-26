@@ -871,24 +871,16 @@ export const RetroDesktopNavigation: React.FC<RetroDesktopNavigationProps> = ({
                 }`}
               >
                 {/* Retro Folder / Icon */}
-                <div className="relative mb-1.5">
+                <div className="relative mb-2">
                   <span className="text-4xl filter drop-shadow-md">{icon.iconEmoji}</span>
                   {isOpen && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-[#22c55e] border border-black rounded-full animate-ping" />
-                  )}
-                  {icon.badge && (
-                    <span className="absolute -bottom-1 -right-2 px-1.5 py-0.5 rounded text-[9px] font-pixel bg-[#000080] text-[#ffff00] border border-white">
-                      {icon.badge}
-                    </span>
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-[#22c55e] border border-black rounded-full" />
                   )}
                 </div>
-
-                <span className="font-pixel text-xs tracking-wider font-bold drop-shadow leading-tight block">
+                <span className="font-sans text-xs font-bold drop-shadow leading-tight block">
                   {icon.label}
                 </span>
-                <span className="text-[10px] font-mono text-gray-200 opacity-90 truncate max-w-full block">
-                  {icon.hindi}
-                </span>
+
               </motion.button>
             );
           })}
@@ -957,15 +949,7 @@ export const RetroDesktopNavigation: React.FC<RetroDesktopNavigationProps> = ({
                 </div>
 
                 {/* Classic Windows Menu Bar */}
-                <div className="bg-[#c0c0c0] px-3 py-1 border-b border-[#808080] flex items-center gap-4 text-xs select-none">
-                  <span className="hover:underline cursor-pointer">File</span>
-                  <span className="hover:underline cursor-pointer">Edit</span>
-                  <span className="hover:underline cursor-pointer">View</span>
-                  <span className="hover:underline cursor-pointer">Help</span>
-                  <span className="ml-auto text-[11px] text-gray-700">
-                    {win.hindiTitle}
-                  </span>
-                </div>
+                {/* Removed Classic Windows Menu Bar */}
 
                 {/* Window Interior Content Area with Error Boundary */}
                 <div className="flex-1 p-4 overflow-y-auto bg-[#1a120e] text-[#f5ebd8] border-2 border-t-[#808080] border-l-[#808080] border-r-white border-b-white shadow-inner">
@@ -978,13 +962,7 @@ export const RetroDesktopNavigation: React.FC<RetroDesktopNavigationProps> = ({
                 </div>
 
                 {/* Status Bar */}
-                <div className="bg-[#c0c0c0] px-3 py-1 border-t border-[#808080] flex items-center justify-between text-[11px] text-gray-800 select-none">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                    <span>Status: Ready • 1 Item Open</span>
-                  </div>
-                  <span className="font-mono text-[10px]">AANGAN WIN98 SHELL</span>
-                </div>
+                {/* Removed Status Bar */}
               </motion.div>
             );
           })}

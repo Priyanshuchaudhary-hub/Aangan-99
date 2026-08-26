@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import confetti from 'canvas-confetti';
 import { BookOpen, PenTool, Sparkles, Heart, ChevronLeft, ChevronRight, PlusCircle, Check } from 'lucide-react';
+import { collection, onSnapshot, addDoc, query, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from '../lib/firebase.ts';
 import { SLAM_BOOK_INITIAL_ENTRIES } from '../data/nostalgiaData.ts';
 import { SlamBookEntry } from '../types.ts';
 import { audioSynthesizer } from '../utils/audioSynthesizer.ts';
@@ -17,17 +19,40 @@ const GEL_PENS = [
 const DOODLE_EMOJIS = ['🏏', '📼', '✨', '⛵', '🍬', '🚀', '🧸', '🎮', '❤️'];
 
 export const SlamBook: React.FC = () => {
-  const [entries, setEntries] = useState<SlamBookEntry[]>(() => {
+  const [entries, setEntries] = useState<SlamBookEntry[]>(SLAM_BOOK_INITIAL_ENTRIES);
+
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('aangan99_slambook');
-      if (saved) {
-        return JSON.parse(saved);
-      }
+      const q = query(collection(db, 'slambook_entries'), orderBy('createdAt', 'desc'));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const fetchedDocs: SlamBookEntry[] = snapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              name: data.name || 'Anonymous',
+              nickname: data.nickname || 'Guddu',
+              year: data.year || '1999',
+              city: data.city || 'Doordarshan Colony',
+              favoriteCartoon: data.favoriteCartoon || 'SWAT Kats',
+              oneRupeeCandy: data.oneRupeeCandy || 'Phantom Sweet Cigarettes',
+              year2000DreamCareer: data.year2000DreamCareer || 'Astronaut',
+              bestMemory: data.bestMemory || '',
+              penColor: data.penColor || 'blue',
+              timestamp: data.timestamp || Date.now(),
+              doodleEmoji: data.doodleEmoji || '✨',
+            };
+          });
+          setEntries([...fetchedDocs, ...SLAM_BOOK_INITIAL_ENTRIES]);
+        }
+      }, (err) => {
+        console.warn('[FIRESTORE SLAMBOOK LISTEN WARN]', err);
+      });
+      return () => unsubscribe();
     } catch (e) {
-      console.error(e);
+      console.warn('[FIRESTORE INITIALIZATION EXCEPTION]', e);
     }
-    return SLAM_BOOK_INITIAL_ENTRIES;
-  });
+  }, []);
 
   const [activePageIndex, setActivePageIndex] = useState<number>(0);
   const [isSigningModalOpen, setIsSigningModalOpen] = useState<boolean>(false);
@@ -64,14 +89,13 @@ export const SlamBook: React.FC = () => {
     setActivePageIndex((prev) => (prev - 1 + entries.length) % entries.length);
   };
 
-  const handleSubmitSlamEntry = (e: React.FormEvent) => {
+  const handleSubmitSlamEntry = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formMemory.trim()) return;
 
     audioSynthesizer.playClick('switch');
 
-    const newEntry: SlamBookEntry = {
-      id: `slam-${Date.now()}`,
+    const entryData = {
       name: formName.trim(),
       nickname: formNickname.trim() || 'Guddu',
       year: formYear,
@@ -83,9 +107,21 @@ export const SlamBook: React.FC = () => {
       penColor: formPenColor,
       timestamp: Date.now(),
       doodleEmoji: formDoodle,
+      createdAt: serverTimestamp(),
     };
 
-    setEntries([newEntry, ...entries]);
+    try {
+      await addDoc(collection(db, 'slambook_entries'), entryData);
+    } catch (err) {
+      console.error('[FIRESTORE ADD SLAMBOOK ENTRY ERROR]', err);
+    }
+
+    const newEntry: SlamBookEntry = {
+      id: `slam-${Date.now()}`,
+      ...entryData,
+    };
+
+    setEntries((prev) => [newEntry, ...prev]);
     setActivePageIndex(0);
     setIsSigningModalOpen(false);
 

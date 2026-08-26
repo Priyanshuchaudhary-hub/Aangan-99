@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+const fs = require('fs');
+const content = `import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Play, Pause, SkipBack, SkipForward, Volume2, Heart, ListMusic, Shuffle, Repeat, ExternalLink, Loader2, Music } from 'lucide-react';
 import { useMusic } from '../context/MusicContext.tsx';
@@ -25,7 +26,7 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
     toggleShuffle,
     repeatMode,
     toggleRepeat,
-    activePlaylist,
+    currentPlaylist,
     queue,
     playTrack
   } = useMusic();
@@ -38,7 +39,7 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    return \`\${mins}:\${secs < 10 ? '0' : ''}\${secs}\`;
   };
 
   return (
@@ -85,7 +86,7 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
               <div className="w-full max-w-md text-center mb-8 z-10">
                 <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold text-[#f7f1e5] mb-2 font-serif">{currentTrack?.title || 'No Track Selected'}</h2>
                 <p className="text-[#a89582] text-lg">{currentTrack?.artist || 'Unknown Artist'}</p>
-                {activePlaylist && <p className="text-xs text-[#6b5847] uppercase tracking-widest mt-4">Playing from: {activePlaylist.title}</p>}
+                {currentPlaylist && <p className="text-xs text-[#6b5847] uppercase tracking-widest mt-4">Playing from: {currentPlaylist.title}</p>}
               </div>
 
               {/* Progress & Controls */}
@@ -99,13 +100,13 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
                     value={playbackProgress}
                     onChange={(e) => seekTo(Number(e.target.value))}
                     className="flex-1 h-1.5 bg-[#2a2a27] accent-[#f59e0b] rounded-full cursor-pointer appearance-none outline-none"
-                    style={{ background: `linear-gradient(to right, #f59e0b ${playbackProgress}%, #2a2a27 ${playbackProgress}%)` }}
+                    style={{ background: \`linear-gradient(to right, #f59e0b \${playbackProgress}%, #2a2a27 \${playbackProgress}%)\` }}
                   />
                   <span className="text-xs font-mono text-[#8a7663] w-10">{formatTime(durationSeconds)}</span>
                 </div>
 
                 <div className="flex items-center justify-center gap-8">
-                  <button onClick={toggleShuffle} className={`text-[#8a7663] hover:text-[#f7f1e5] transition-colors ${isShuffle ? 'text-[#f59e0b]' : ''}`}>
+                  <button onClick={toggleShuffle} className={\`text-[#8a7663] hover:text-[#f7f1e5] transition-colors \${isShuffle ? 'text-[#f59e0b]' : ''}\`}>
                     <Shuffle className="w-5 h-5" />
                   </button>
                   <button onClick={previousTrack} className="text-[#f7f1e5] hover:text-[#f59e0b] transition-colors active:scale-95">
@@ -121,7 +122,7 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
                   <button onClick={nextTrack} className="text-[#f7f1e5] hover:text-[#f59e0b] transition-colors active:scale-95">
                     <SkipForward className="w-8 h-8 fill-current" />
                   </button>
-                  <button onClick={toggleRepeat} className={`text-[#8a7663] hover:text-[#f7f1e5] transition-colors ${repeatMode !== 'OFF' ? 'text-[#f59e0b]' : ''}`}>
+                  <button onClick={toggleRepeat} className={\`text-[#8a7663] hover:text-[#f7f1e5] transition-colors \${repeatMode !== 'OFF' ? 'text-[#f59e0b]' : ''}\`}>
                     <Repeat className="w-5 h-5" />
                   </button>
                 </div>
@@ -134,14 +135,14 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
               <div className="flex gap-8 mb-8 border-b border-[#2a2a27]">
                 <button 
                   onClick={() => setActiveTab('queue')}
-                  className={`pb-4 text-sm font-bold tracking-wider uppercase transition-colors relative ${activeTab === 'queue' ? 'text-[#f7f1e5]' : 'text-[#6b5847] hover:text-[#a89582]'}`}
+                  className={\`pb-4 text-sm font-bold tracking-wider uppercase transition-colors relative \${activeTab === 'queue' ? 'text-[#f7f1e5]' : 'text-[#6b5847] hover:text-[#a89582]'}\`}
                 >
                   Up Next
                   {activeTab === 'queue' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#f59e0b]" />}
                 </button>
                 <button 
                   onClick={() => setActiveTab('playlists')}
-                  className={`pb-4 text-sm font-bold tracking-wider uppercase transition-colors relative ${activeTab === 'playlists' ? 'text-[#f7f1e5]' : 'text-[#6b5847] hover:text-[#a89582]'}`}
+                  className={\`pb-4 text-sm font-bold tracking-wider uppercase transition-colors relative \${activeTab === 'playlists' ? 'text-[#f7f1e5]' : 'text-[#6b5847] hover:text-[#a89582]'}\`}
                 >
                   Playlists
                   {activeTab === 'playlists' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#f59e0b]" />}
@@ -154,9 +155,9 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
                     {queue.length === 0 && <div className="text-[#6b5847] text-sm italic mt-8">Queue is empty.</div>}
                     {queue.map((track, idx) => (
                       <div 
-                        key={`${track.id}-${idx}`}
-                        className={`flex items-center gap-4 p-3 rounded-xl hover:bg-[#1A1A17] transition-colors cursor-pointer group ${currentTrack?.id === track.id ? 'bg-[#1A1A17] border border-[#2a2a27]' : 'border border-transparent'}`}
-                        onClick={() => playTrack(track, activePlaylist || undefined)}
+                        key={\`\${track.id}-\${idx}\`}
+                        className={\`flex items-center gap-4 p-3 rounded-xl hover:bg-[#1A1A17] transition-colors cursor-pointer group \${currentTrack?.id === track.id ? 'bg-[#1A1A17] border border-[#2a2a27]' : 'border border-transparent'}\`}
+                        onClick={() => playTrack(track, currentPlaylist || undefined)}
                       >
                         <div className="w-10 h-10 rounded overflow-hidden bg-[#2a2a27] shrink-0 relative">
                            {/* Simplified artwork placeholder */}
@@ -168,7 +169,7 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
                            )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h5 className={`text-sm font-bold truncate ${currentTrack?.id === track.id ? 'text-[#f59e0b]' : 'text-[#f7f1e5] group-hover:text-[#f59e0b]'}`}>{track.title}</h5>
+                          <h5 className={\`text-sm font-bold truncate \${currentTrack?.id === track.id ? 'text-[#f59e0b]' : 'text-[#f7f1e5] group-hover:text-[#f59e0b]'}\`}>{track.title}</h5>
                           <p className="text-xs text-[#a89582] truncate">{track.artist}</p>
                         </div>
                       </div>
@@ -211,3 +212,5 @@ export const NostalgiaRadioModal: React.FC<{ isOpen: boolean; onClose: () => voi
     </AnimatePresence>
   );
 };
+`
+fs.writeFileSync('src/components/NostalgiaRadioModal.tsx', content);
